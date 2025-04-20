@@ -1,7 +1,7 @@
-#🚀 NebengJek – Backend System
+# 🚀 NebengJek – Backend System
 NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari Gojek dan Grab. Proyek ini mengimplementasikan layanan booking, pencarian driver terdekat (matching), pelacakan real-time (tracking), dan notifikasi. Aplikasi ini dikembangkan menggunakan pendekatan Monorepo dengan framework NestJS
 
-#🏗️ Teknologi & Tools
+# 🏗️ Teknologi & Tools
 |Fungsi|Teknologi|
 |---|---|
 |Bahasa Pemrograman|TypeScript|
@@ -15,24 +15,28 @@ NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari
 |Arsitektur Service|Microservices Modular dalam Monorepo|
 |Cloud Deployment|AWS EC2 (opsional), juga bisa lokal|
 
-#📂 Struktur Monorepo
-📦nebengjek
- ┣ 📂libs
- ┃ ┣ 📂common
- ┃ ┗ 📂interfaces
- ┣ 📂apps
- ┃ ┣ 📂notification-service
- ┃ ┣ 📂matching-service
- ┃ ┣ 📂booking-service
- ┃ ┣ 📂user-service
- ┃ ┣ 📂api-gateway
- ┃ ┗ 📂tracking-service
- ┣ 📜docker-compose.yml
- ┣ 📜README.md
- ┣ 📜.env.example
- ┗ 📜.gitignore
+# 📂 Struktur Monorepo
+- **nebengjek/**
+  - **libs/**
+    - common/
+    - interfaces/
+  - **docs/**
+    - diagrams/
+    - contracts/
+    - pictures/
+  - **apps/**
+    - notification-service/
+    - matching-service/
+    - booking-service/
+    - user-service/
+    - api-gateway/
+    - tracking-service/
+  - docker-compose.yml
+  - README.md
+  - .env.example
+  - .gitignore
 
-#🧩 Komponen Utama
+# 🧩 Komponen Utama
 1. User Service
     * Registrasi & login user / driver
     * Profile & role (penumpang/driver)
@@ -52,7 +56,7 @@ NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari
     * Driver update lokasi
     * User fetch lokasi driver secara real-time
 
-#🗺️ High-Level Architecture
+# 🗺️ High-Level Architecture
 Deskripsi:
 * API Gateway menangani routing dari client
 * Setiap service berkomunikasi via REST/gRPC atau RabbitMQ
@@ -60,24 +64,31 @@ Deskripsi:
 * PostgreSQL menyimpan data utama
 * WebSocket untuk komunikasi real-time
 
-#🔍 ERD (Entity Relationship Diagram)
+# 🔍 ERD (Entity Relationship Diagram)
 Entity yang dirancang:
 * User (Passenger, Driver)
 * Booking
 * Trip
-* DriverLocation
+* Driver Profile
+* Notification
 
-#⚙️ Menjalankan Proyek
-## Local Setup
+![ERD](docs/pictures/erd.png)
+
+# ⚙️ Menjalankan Proyek
+##  Local Setup
 1. Jalankan docker dependencies:
+
     `docker-compose up -d`
 2. Jalankan aplikasi:
+
     `npm install`
+
     `nx run-many --target=serve --all`
 3. Cek dokumentasi API (Swagger) di:
+
     `localhost:3000/api` (API Gateway)
 
-#🧪 End-to-End Testing (E2E)
+# 🧪 End-to-End Testing (E2E)
 Berikut ini beberapa skenario E2E yang akan diuji:
 |Skema|Deskripsi|
 |---|---|
@@ -88,13 +99,13 @@ Berikut ini beberapa skenario E2E yang akan diuji:
 |Tracking|User melihat lokasi driver real-time|
 |Complete Trip|Trip selesai dan status diupdate|
 
-#📌 Asumsi Proyek
+# 📌 Asumsi Proyek
 * Lokasi dari Telkomsel disimulasikan menggunakan dummy koordinat
 * Matching menggunakan perhitungan jarak sederhana (haversine/Euclidean)
 * Transaksi real money tidak diimplementasikan
 * Beberapa data disimpan sementara di Redis (misalnya lokasi driver)
 * Event async diatur via RabbitMQ basic queue
 
-#🤝 Tim & Kontribusi
+# 🤝 Tim & Kontribusi
 Disiapkan untuk keperluan assesment backend engineer 2025.
 Ditulis dan dikembangkan secara mandiri.
