@@ -36,6 +36,11 @@ NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari
   - .env.example
   - .gitignore
 
+# 🔐 Password Hashing
+- Menggunakan `bcrypt` untuk keamanan
+- Salt rounds: 10 (default)
+- Digunakan untuk pengamanan akun user & driver
+
 # 🧩 Komponen Utama
 1. User Service
     * Registrasi & login user / driver
