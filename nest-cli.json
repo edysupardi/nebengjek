@@ -1,21 +1,12 @@
 {
   "monorepo": true,
   "root": "apps/main",
-  "sourceRoot": "apps/main/src",
+  "sourceRoot": "apps/user-service/src",
   "compilerOptions": {
     "webpack": true,
     "tsConfigPath": "tsconfig.base.json"
   },
   "projects": {
-    "main": {
-      "type": "application",
-      "root": "apps/main",
-      "entryFile": "main",
-      "sourceRoot": "apps/main/src",
-      "compilerOptions": {
-        "tsConfigPath": "tsconfig.base.json"
-      }
-    },
     "user-service": {
       "type": "application",
       "root": "apps/user-service",
