@@ -4,7 +4,7 @@
   "sourceRoot": "apps/user-service/src",
   "compilerOptions": {
     "webpack": true,
-    "tsConfigPath": "tsconfig.base.json"
+    "tsConfigPath": "tsconfig.json"
   },
   "projects": {
     "user-service": {

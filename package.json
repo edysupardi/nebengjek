@@ -33,6 +33,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.1.14",
+    "tsconfig-paths": "^4.2.0",
     "typeorm": "^0.3.22"
   },
   "scripts": {
