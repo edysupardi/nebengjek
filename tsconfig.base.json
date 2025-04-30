@@ -13,7 +13,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@libs/*": ["libs/*"]
+      "@libs/*": ["libs/*"],
+      "@user/*": ["apps/user-service/src/user/*"],
+      "@auth/*": ["apps/user-service/src/auth/*"],
     }
   },
   "exclude": ["node_modules", "dist"],

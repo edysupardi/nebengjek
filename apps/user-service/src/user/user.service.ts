@@ -6,7 +6,7 @@ import { User } from './entities/user.entity';
 export class UsersService {
   constructor(private readonly userRepo: UserRepository) {}
 
-  async findByEmail(email: string): Promise<User | undefined> {
+  async findByEmail(email: string): Promise<User | null> {
     return this.userRepo.findByEmail(email);
   }
 }

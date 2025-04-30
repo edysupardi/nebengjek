@@ -18,14 +18,14 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column({ unique: true })
-  phone_number: string;
-
-  @Column()
-  password_hash: string;
-
   @Column()
   role: 'PASSENGER' | 'DRIVER';
+
+  @Column({name: 'phone_number', unique: true})
+  phoneNumber: string;
+
+  @Column({ name: 'password_hash'})
+  passwordHash: string;
 
   @CreateDateColumn()
   created_at: Date;

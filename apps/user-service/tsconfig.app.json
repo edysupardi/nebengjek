@@ -4,7 +4,9 @@
     "baseUrl": ".",
     "outDir": "../../dist/apps/user-service",
     "paths": {
-      "@libs/*": ["../../libs/*"]
+      "@libs/*": ["../../libs/*"],
+      "@user/*": ["src/user/*"],
+      "@auth/*": ["src/auth/*"],
     }
   },
   "include": ["src/**/*"],
