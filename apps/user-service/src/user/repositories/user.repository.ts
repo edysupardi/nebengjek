@@ -11,7 +11,7 @@ export class UserRepository {
 
   async findByPhoneNumber(phone: string): Promise<User | null> {
     return this.prisma.user.findUnique({
-      where: { phone_number: phone },
+      where: { phoneNumber: phone },
     });
   }
 
