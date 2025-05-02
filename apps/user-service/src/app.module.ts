@@ -9,7 +9,7 @@ import { ConfigModule } from '@nestjs/config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: 'apps/user-service/.env',
+      envFilePath: '.env',
     }),
     CommonConfigModule,
     UserModule,

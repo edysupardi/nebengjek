@@ -1,25 +1,91 @@
 // auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '@user/user.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { LoginUserDto } from '@user/dto/login-user.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private userService: UsersService,
     private jwtService: JwtService,
-  ) {}
+    private configService: ConfigService,
+    @Inject('REDIS_CLIENT') private redis: any // Inject Redis client
+  ) {
+    // Cek koneksi Redis
+    this.redis.on('connect', () => {
+      this.logger.log('Redis connected')
+    });
+    this.redis.on('error', (err: any) =>{
+      this.logger.error('Redis error', err);
+    });
+  }
 
   async login(loginDto: LoginUserDto) {
     const user = await this.userService.findByEmail(loginDto.email);
     if (!user || !(await bcrypt.compare(loginDto.password, user.passwordHash))) {
+      this.logger.error(`Invalid credentials for email: ${loginDto.email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
-    const payload = { sub: user.id, role: user.role };
+    const payload = {
+      sub: user.id,
+      role: user.role
+    };
+    
+    // Generate access token
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_ACCESS_SECRET'),
+      expiresIn: this.configService.get('JWT_ACCESS_EXPIRES_IN'),
+    });
+
+    // Generate refresh token
+    const refreshToken = this.jwtService.sign(
+      { ...payload, isRefreshToken: true },
+      {
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
+        expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN'),
+      }
+    );
+
+    await this.redis.set(
+      `refresh_token:${user.id}`, 
+      refreshToken, 
+      'EX', // Set expiration time
+      60 * 60 * 24 * 7 // 7 hari dalam detik (sesuaikan dengan JWT_REFRESH_EXPIRES_IN)
+    );
+
+    this.logger.log(`User ${user.id} logged in successfully`);
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    };
+  }
+
+  async refreshToken(refreshToken: string) {
+    // Verifikasi refresh_token & cek di Redis/DB
+    // const payload = this.jwtService.verify(refreshToken, { secret: 'REFRESH_SECRET' });
+    const payload = this.jwtService.verify(refreshToken, { 
+      secret: this.configService.get('JWT_REFRESH_SECRET') // Pakai env variable
+    })
+    if(!this.redis) {
+      this.logger.error('Redis client is not initialized');
+      throw new Error('Redis connection failed');
+    }
+    const storedToken = await this.redis.get(`refresh_token:${payload.sub}`);
+  
+    if (storedToken !== refreshToken){
+      this.logger.error(`Invalid refresh token for user ID: ${payload.sub}`);
+      throw new UnauthorizedException();
+    }
+    
+    this.logger.log(`Generate refresh token for user ID: ${payload.sub}`);
+    // Generate access_token baru
+    return {
+      access_token: this.jwtService.sign({ sub: payload.sub }),
     };
   }
 }
