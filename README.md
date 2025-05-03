@@ -81,15 +81,24 @@ Entity yang dirancang:
 
 # ⚙️ Menjalankan Proyek
 ##  Local Setup
-1. Jalankan docker dependencies:
-
-    `docker-compose up -d`
-2. Jalankan aplikasi:
+1. Install semua library:
 
     `npm install`
 
+    jangan lupa `.env` di tambahkan dan di isi semua value yang dibutuhkan
+
+2. Generate prisma:
+
+    `npx prisma generate`
+
+3. Jalankan aplikasi:
+
     `nx run-many --target=serve --all`
-3. Cek dokumentasi API (Swagger) di:
+    atau jika ingin menjalankan satu service bisa menggunakan (misal service user):
+
+    `npm run start:user`
+
+4. Cek dokumentasi API (Swagger) di:
 
     `localhost:3000/api` (API Gateway)
 

@@ -1,5 +1,20 @@
 {
   "extends": "./tsconfig.base.json",
-  "files": [],
-  "include": ["apps/**/*"]
+  "compilerOptions": {
+    "paths": {
+      "@app/common": ["libs/common/src"],
+      "@app/common/*": ["libs/common/src/*"],
+      "@app/database": ["libs/database/src"],
+      "@app/database/*": ["libs/database/src/*"],
+      "@app/messaging": ["libs/messaging/src"],
+      "@app/messaging/*": ["libs/messaging/src/*"],
+
+      "@app/auth": ["apps/user-service/src/auth"],
+      "@app/auth/*": ["apps/user-service/src/auth/*"],
+      "@app/user": ["apps/user-service/src/user"],
+      "@app/user/*": ["apps/user-service/src/user/*"],
+    }
+  },
+  "include": ["apps/**/*", "libs/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,13 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "outDir": "../../dist/apps/user-service",
-    "paths": {
-      "@libs/*": ["../../libs/*"],
-      "@user/*": ["src/user/*"],
-      "@auth/*": ["src/auth/*"],
-    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]

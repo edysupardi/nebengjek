@@ -1,12 +1,22 @@
 {
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps",
   "monorepo": true,
-  "root": "apps/main",
-  "sourceRoot": "apps/user-service/src",
+  "root": "apps",
   "compilerOptions": {
     "webpack": true,
     "tsConfigPath": "tsconfig.json"
   },
   "projects": {
+    "api-gateway": {
+      "type": "application",
+      "root": "apps/api-gateway",
+      "entryFile": "main",
+      "sourceRoot": "apps/api-gateway/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
+      }
+    },
     "user-service": {
       "type": "application",
       "root": "apps/user-service",
@@ -14,6 +24,33 @@
       "sourceRoot": "apps/user-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/user-service/tsconfig.app.json"
+      }
+    },
+    "matching-service": {
+      "type": "application",
+      "root": "apps/matching-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/matching-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/matching-service/tsconfig.app.json"
+      }
+    },
+    "common": {
+      "type": "library",
+      "root": "libs/common",
+      "entryFile": "index",
+      "sourceRoot": "libs/common/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/common/tsconfig.lib.json"
+      }
+    },
+    "database": {
+      "type": "library",
+      "root": "libs/database",
+      "entryFile": "index",
+      "sourceRoot": "libs/database/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/database/tsconfig.lib.json"
       }
     }
   }

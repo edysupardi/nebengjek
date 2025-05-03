@@ -1,29 +1,52 @@
-// src/user/repositories/user.repository.ts
-
-import { PrismaService } from '@libs/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
-import { User } from '@user/entities/user.entity';
-import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from '@app/database';
+import { DriverProfile, User } from '@app/common/entities';
+import { User as PrismaUser, Prisma } from '@prisma/client';
+
+type UserWithRelations = PrismaUser & {
+  driverProfile?: DriverProfile | null;
+}
 
 @Injectable()
 export class UserRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByPhoneNumber(phone: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { phoneNumber: phone },
+  async findById(id: string): Promise<UserWithRelations | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        driverProfile: true,
+      },
     });
+  
+    if (!user) return null;
+  
+    // Transform null menjadi undefined
+    return {
+      ...user,
+      email: user.email ?? undefined,
+    } as User;
+  }
+
+  async findByPhone(phone: string): Promise<User | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { phone },
+      include: {
+        driverProfile: true,
+      },
+    });
+  
+    if (!user) return null;
+  
+    return {
+      ...user,
+      email: user.email ?? undefined,
+    } as User;
   }
 
   async findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: { email },
-    });
-  }
-
-  async findById(id: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { id },
     });
   }
 }
