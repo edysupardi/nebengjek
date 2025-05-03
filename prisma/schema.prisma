@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -13,102 +9,127 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums sesuai CHECK constraints
-enum Role {
-  PASSENGER
+enum UserRole {
+  CUSTOMER
   DRIVER
+  ADMIN
 }
 
 enum BookingStatus {
-  REQUESTED
-  MATCHED
-  CANCELLED
+  PENDING
+  ACCEPTED  // Driver menerima
+  REJECTED  // Driver menolak
+  CANCELLED // Customer membatalkan
+  COMPLETED // Perjalanan selesai
 }
 
 enum TripStatus {
-  ONGOING
-  COMPLETED
+  ONGOING    // Perjalanan sedang berlangsung
+  COMPLETED  // Perjalanan selesai
+  CANCELLED  // Perjalanan dibatalkan
 }
 
-enum NotificationType {
-  BOOKING
-  LOCATION_UPDATE
-}
-
-enum NotificationStatus {
-  SENT
-  FAILED
-}
-
-// Model Users
 model User {
-  id String @id @default(uuid()) @db.Uuid
-  name String @db.VarChar(100)
-  email String @unique @db.VarChar(100)
-  phoneNumber String @unique @map("phone_number") @db.VarChar(20)
-  passwordHash String @map("password_hash")
-  role Role
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
+  id            String          @id @default(uuid())
+  phone         String          @unique
+  name          String
+  email         String?         @unique
+  password      String
+  role          UserRole        @default(CUSTOMER)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  
+  // Relasi
+  driverProfile DriverProfile?
+  bookingsAsCustomer  Booking[]  @relation("CustomerBookings")
+  bookingsAsDriver    Booking[]  @relation("DriverBookings")
+  locations     Location[]
+  notifications Notification[]
 
-  driverProfile DriverProfile? @relation("UserDriverProfile")
-  bookings Booking[] @relation("UserBookings")
-  driverTrips Trip[] @relation("DriverTrips")
-  notifications Notification[] @relation("UserNotifications")
   @@map("users")
 }
 
-// Model DriverProfile
 model DriverProfile {
-  id String @id @default(uuid()) @db.Uuid
-  userId String @unique @map("user_id") @db.Uuid
-  plateNumber String @db.VarChar(20) @map("plate_number")
-  vehicleType String @db.VarChar(50) @map("vehicle_type")
-  isActive Boolean @default(false) @map("is_active")
-  currentLat Decimal? @map("current_lat") @db.Decimal(10, 8)
-  currentLng Decimal? @map("current_lng") @db.Decimal(11, 8)
-  lastUpdated DateTime @default(now()) @map("last_updated")
+  id            String    @id @default(uuid())
+  userId        String    @unique @map("user_id")
+  status        Boolean   @default(false) // online/offline
+  lastLatitude  Float?    @map("last_latitude")
+  lastLongitude Float?    @map("last_longitude")
+  vehicleType   String?   @map("vehicle_type")
+  plateNumber   String?   @map("plate_number")
+  rating        Float     @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  // Relasi
+  user          User      @relation(fields: [userId], references: [id])
 
-  user User @relation("UserDriverProfile", fields: [userId], references: [id], onDelete: Cascade)
+  @@map("driver_profiles")
 }
 
-// Model Booking
 model Booking {
-  id String @id @default(uuid()) @db.Uuid
-  userId String @map("user_id") @db.Uuid
-  originLat Decimal @map("origin_lat") @db.Decimal(10, 8)
-  originLng Decimal @map("origin_lng") @db.Decimal(11, 8)
-  destLat Decimal @map("dest_lat") @db.Decimal(10, 8)
-  destLng Decimal @map("dest_lng") @db.Decimal(11, 8)
-  status BookingStatus @default(REQUESTED)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
+  id             String        @id @default(uuid())
+  customerId     String        @map("customer_id")
+  driverId       String?       @map("driver_id")
+  pickupLat      Float         @map("pickup_lat")
+  pickupLng      Float         @map("pickup_lng")
+  destinationLat Float         @map("destination_lat")
+  destinationLng Float         @map("destination_lng")
+  status         BookingStatus @default(PENDING)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  
+  // Relasi
+  customer       User          @relation("CustomerBookings", fields: [customerId], references: [id])
+  driver         User?         @relation("DriverBookings", fields: [driverId], references: [id])
+  trip           Trip?
 
-  user User @relation("UserBookings", fields: [userId], references: [id], onDelete: Cascade)
-  trip Trip?
+  @@map("bookings")
 }
 
-// Model Trip
 model Trip {
-  id String @id @default(uuid()) @db.Uuid
-  bookingId String @unique @map("booking_id") @db.Uuid
-  driverId String @map("driver_id") @db.Uuid
-  startTime DateTime? @map("start_time")
-  endTime DateTime? @map("end_time")
-  status TripStatus @default(ONGOING)
+  id          String     @id @default(uuid())
+  bookingId   String     @unique @map("booking_id")
+  startTime   DateTime   @map("start_time")
+  endTime     DateTime?  @map("end_time")
+  distance    Float      @default(0)  // dalam kilometer
+  price       Float      @default(0)  // Rp 3.000/km
+  discount    Float      @default(0)  // diskon dari driver (persentase)
+  finalPrice  Float      @default(0)  // harga setelah diskon
+  status      TripStatus @default(ONGOING)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  
+  // Relasi
+  booking     Booking    @relation(fields: [bookingId], references: [id])
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  driver User @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Cascade)
+  @@map("trips")
 }
 
-// Model Notification
-model Notification {
-  id String @id @default(uuid()) @db.Uuid
-  userId String @map("user_id") @db.Uuid
-  type NotificationType
-  payload Json
-  status NotificationStatus @default(SENT)
+model Location {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
   createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relasi
+  user      User     @relation(fields: [userId], references: [id])
 
-  user User @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  @@map("locations")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  content   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relasi
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
 }
