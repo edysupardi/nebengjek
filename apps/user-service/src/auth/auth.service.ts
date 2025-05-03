@@ -1,10 +1,12 @@
 // auth.service.ts
 import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { UsersService } from '@user/user.service';
+import { UsersService } from '@app/user/user.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
-import { LoginUserDto } from '@user/dto/login-user.dto';
+import { LoginUserDto } from '@app/auth/dto/login-user.dto';
 import { ConfigService } from '@nestjs/config';
+import { LoginResponseDto } from './dto/response-login.dto';
+import { RefreshTokenResponseDto } from './dto/response-refresh-token.dto';
 
 @Injectable()
 export class AuthService {
@@ -25,10 +27,16 @@ export class AuthService {
     });
   }
 
-  async login(loginDto: LoginUserDto) {
+  async login(loginDto: LoginUserDto): Promise<LoginResponseDto> {
     const user = await this.userService.findByEmail(loginDto.email);
-    if (!user || !(await bcrypt.compare(loginDto.password, user.passwordHash))) {
-      this.logger.error(`Invalid credentials for email: ${loginDto.email}`);
+    if (!user) {
+      this.logger.error(`User not found for email: ${loginDto.email}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    if (!isPasswordValid) {
+      this.logger.error(`Invalid password for email: ${loginDto.email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
     const payload = {
@@ -65,7 +73,7 @@ export class AuthService {
     };
   }
 
-  async refreshToken(refreshToken: string) {
+  async refreshToken(user: number, refreshToken: string): Promise<RefreshTokenResponseDto> {
     // Verifikasi refresh_token & cek di Redis/DB
     // const payload = this.jwtService.verify(refreshToken, { secret: 'REFRESH_SECRET' });
     const payload = this.jwtService.verify(refreshToken, { 

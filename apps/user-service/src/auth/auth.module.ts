@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
-import { AuthService } from '@auth/auth.service';
-import { AuthController } from '@auth/auth.controller';
+import { AuthService } from '@app/auth/auth.service';
+import { AuthController } from '@app/auth/auth.controller';
 import { JwtModule } from '@nestjs/jwt';
-import { UserModule } from '@user/user.module';
+import { UserModule } from '@app/user/user.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { RedisModule } from '@libs/common/redis/redis.module';
+import { RedisModule } from '@app/database/redis/redis.module';
+import { JwtStrategy } from './jwt.strategy';
+import { JwtRefreshStrategy } from './jwt-refresh.strategy';
 
 @Module({
   imports: [
+    ConfigModule,
     UserModule,
     RedisModule,
     JwtModule.registerAsync({
@@ -33,6 +36,10 @@ import { RedisModule } from '@libs/common/redis/redis.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtRefreshStrategy,
+  ],
 })
 export class AuthModule {}

@@ -1,8 +1,11 @@
-// auth.controller.ts
-import { Controller, Post, Body, UseGuards, Request, Logger } from '@nestjs/common';
-import { AuthService } from '@auth/auth.service';
-import { LoginUserDto } from '@user/dto/login-user.dto';
+// apps/user-service/src/auth/auth.controller.ts
+import { Controller, Post, Body, UseGuards, Request, Logger, HttpCode, UnauthorizedException } from '@nestjs/common';
+import { AuthService } from '@app/auth/auth.service';
+import { LoginUserDto } from '@app/auth/dto/login-user.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { LoginResponseDto } from './dto/response-login.dto';
+import { RefreshTokenResponseDto } from './dto/response-refresh-token.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -10,23 +13,34 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  login(@Body() loginDto: LoginUserDto) {
+  @HttpCode(200)
+  login(@Body() loginDto: LoginUserDto): Promise<LoginResponseDto> {
     this.logger.log(
-      `Login attempt with email: ${loginDto.email}, password: ${loginDto.password}`,
+      `Login attempt with email: ${loginDto.email}`,
     );
     return this.authService.login(loginDto);
   }
 
   @Post('refresh')
+  @HttpCode(200)
   @UseGuards(AuthGuard('jwt-refresh'))
-  async refreshToken(@Request() req: any) {
-    const user = req.user;
-    // Generate access token baru
-    const newAccessToken = this.authService.refreshToken(user);
-    this.logger.log(
-      `Refresh token for user ID: ${user.userId}, role: ${user.role}`,
-    );
-    // Simpan refresh token ke Redis/DB
-    return { access_token: newAccessToken };
+  async refreshToken(
+    @Request() req: any, 
+    @Body() refreshDto: RefreshTokenDto
+  ): Promise<RefreshTokenResponseDto> {
+    try {
+      const user = req.user;
+      this.logger.log(`Refresh token request for user ID: ${user.userId}`);
+      
+      // Call the refreshToken method with proper parameters
+      return await this.authService.refreshToken(
+        user.userId, 
+        user.refreshToken // Use the token from the validated user object
+      );
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Refresh token failed: ${errorMessage}`);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
   }
 }
