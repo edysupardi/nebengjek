@@ -1,19 +1,23 @@
 // auth.service.ts
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { UsersService } from '@app/user/user.service';
+import { ConflictException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { UserService } from '@app/user/user.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { LoginUserDto } from '@app/auth/dto/login-user.dto';
 import { ConfigService } from '@nestjs/config';
 import { LoginResponseDto } from './dto/response-login.dto';
 import { RefreshTokenResponseDto } from './dto/response-refresh-token.dto';
+import { RegisterUserDto } from './dto/register-user.dto';
+import { UserResponseDto } from '@app/user/dto/user-response.dto';
+import { UserRole } from '@app/common';
+import { plainToClass } from 'class-transformer';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private userService: UsersService,
+    private userService: UserService,
     private jwtService: JwtService,
     private configService: ConfigService,
     @Inject('REDIS_CLIENT') private redis: any // Inject Redis client
@@ -95,5 +99,40 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign({ sub: payload.sub }),
     };
+  }
+
+  async register(registerDto: RegisterUserDto): Promise<UserResponseDto> {
+    const { email, phone, password, name } = registerDto;
+
+    // Check if user with email already exists
+    if (email) {
+      const existingUserByEmail = await this.userService.findByEmail(email);
+      if (existingUserByEmail) {
+        this.logger.error(`Email already registered: ${email}`);
+        throw new ConflictException('Email already registered');
+      }
+    }
+
+    // Check if user with phone already exists
+    const existingUserByPhone = await this.userService.findByPhone(phone);
+    if (existingUserByPhone) {
+      this.logger.error(`Phone number already registered: ${phone}`);
+      throw new ConflictException('Phone number already registered');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
+    const newUser = await this.userService.create({
+      ...registerDto,
+      password: hashedPassword,
+      role: registerDto.role || UserRole.CUSTOMER, // Default to CUSTOMER if not specified
+    });
+
+    this.logger.log(`New user registered: ${newUser.id}`);
+
+    // Return user data without password
+    return plainToClass(UserResponseDto, newUser);
   }
 }

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AuthService } from '@app/auth/auth.service';
 import { AuthController } from '@app/auth/auth.controller';
 import { JwtModule } from '@nestjs/jwt';
@@ -7,12 +7,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisModule } from '@app/database/redis/redis.module';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtRefreshStrategy } from './jwt-refresh.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+
+console.log('UserModule:', UserModule);
 
 @Module({
   imports: [
     ConfigModule,
-    UserModule,
     RedisModule,
+    forwardRef(() => UserModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -40,6 +43,11 @@ import { JwtRefreshStrategy } from './jwt-refresh.strategy';
     AuthService,
     JwtStrategy,
     JwtRefreshStrategy,
+    JwtAuthGuard,
   ],
+  exports: [
+    JwtAuthGuard,
+    AuthService,
+  ]
 })
 export class AuthModule {}

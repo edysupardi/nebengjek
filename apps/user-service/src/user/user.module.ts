@@ -1,11 +1,13 @@
-import { Module } from '@nestjs/common';
-import { UsersService } from './user.service';
-import { UsersController } from './user.controller';
-import { UserRepository } from './repositories/user.repository';
+import { forwardRef, Module } from '@nestjs/common';
+import { UserService } from '@app/user/user.service';
+import { UserController } from '@app/user/user.controller';
+import { UserRepository } from '@app/user/repositories/user.repository';
+import { AuthModule } from '@app/auth/auth.module';
 
 @Module({
-  providers: [UsersService, UserRepository],
-  controllers: [UsersController],
-  exports: [UsersService], // Supaya bisa digunakan di AuthModule
+  imports: [forwardRef(() => AuthModule)],
+  providers: [UserService, UserRepository],
+  controllers: [UserController],
+  exports: [UserService],
 })
 export class UserModule {}

@@ -35,7 +35,7 @@ export class AuthController {
       // Call the refreshToken method with proper parameters
       return await this.authService.refreshToken(
         user.userId, 
-        user.refreshToken // Use the token from the validated user object
+        refreshDto.refresh_token // Use the token from the validated user object
       );
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

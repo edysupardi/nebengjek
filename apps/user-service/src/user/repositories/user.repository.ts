@@ -49,4 +49,33 @@ export class UserRepository {
       where: { email },
     });
   }
+
+  async create(data: Prisma.UserCreateInput): Promise<User> {
+    const user = await this.prisma.user.create({
+      data,
+      include: {
+        driverProfile: true,
+      },
+    });
+
+    return {
+      ...user,
+      email: user.email ?? undefined,
+    } as User;
+  }
+
+  async update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data,
+      include: {
+        driverProfile: true,
+      },
+    });
+
+    return {
+      ...user,
+      email: user.email ?? undefined,
+    } as User;
+  }
 }
