@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "commonJS",
+    "lib": ["ES2021"],
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@app/common":               ["libs/common/src"],
+      "@app/common/*":             ["libs/common/src/*"],
+      "@app/database":             ["libs/database/src"],
+      "@app/database/*":           ["libs/database/src/*"],
+      "@app/messaging":            ["libs/messaging/src"],
+      "@app/messaging/*":          ["libs/messaging/src/*"],
+
+      "@app/auth":                 ["apps/user-service/src/auth"],
+      "@app/auth/*":               ["apps/user-service/src/auth/*"],
+      "@app/user":                 ["apps/user-service/src/user"],
+      "@app/user/*":               ["apps/user-service/src/user/*"],
+      "@app/driver":               ["apps/user-service/src/driver"],
+      "@app/driver/*":             ["apps/user-service/src/driver/*"],
+    }
+  },
+}

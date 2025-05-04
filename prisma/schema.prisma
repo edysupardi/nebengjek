@@ -1,0 +1,135 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED  // Driver menerima
+  REJECTED  // Driver menolak
+  CANCELLED // Customer membatalkan
+  COMPLETED // Perjalanan selesai
+}
+
+enum TripStatus {
+  ONGOING    // Perjalanan sedang berlangsung
+  COMPLETED  // Perjalanan selesai
+  CANCELLED  // Perjalanan dibatalkan
+}
+
+model User {
+  id            String          @id @default(uuid())
+  phone         String          @unique
+  name          String
+  email         String?         @unique
+  password      String
+  role          UserRole        @default(CUSTOMER)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  
+  // Relasi
+  driverProfile DriverProfile?
+  bookingsAsCustomer  Booking[]  @relation("CustomerBookings")
+  bookingsAsDriver    Booking[]  @relation("DriverBookings")
+  locations     Location[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model DriverProfile {
+  id            String    @id @default(uuid())
+  userId        String    @unique @map("user_id")
+  status        Boolean   @default(false) // online/offline
+  lastLatitude  Float?    @map("last_latitude")
+  lastLongitude Float?    @map("last_longitude")
+  vehicleType   String?   @map("vehicle_type")
+  plateNumber   String?   @map("plate_number")
+  rating        Float     @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  // Relasi
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@map("driver_profiles")
+}
+
+model Booking {
+  id             String        @id @default(uuid())
+  customerId     String        @map("customer_id")
+  driverId       String?       @map("driver_id")
+  pickupLat      Float         @map("pickup_lat")
+  pickupLng      Float         @map("pickup_lng")
+  destinationLat Float         @map("destination_lat")
+  destinationLng Float         @map("destination_lng")
+  status         BookingStatus @default(PENDING)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  
+  // Relasi
+  customer       User          @relation("CustomerBookings", fields: [customerId], references: [id])
+  driver         User?         @relation("DriverBookings", fields: [driverId], references: [id])
+  trip           Trip?
+
+  @@map("bookings")
+}
+
+model Trip {
+  id          String     @id @default(uuid())
+  bookingId   String     @unique @map("booking_id")
+  startTime   DateTime   @map("start_time")
+  endTime     DateTime?  @map("end_time")
+  distance    Float      @default(0)  // dalam kilometer
+  price       Float      @default(0)  // Rp 3.000/km
+  discount    Float      @default(0)  // diskon dari driver (persentase)
+  finalPrice  Float      @default(0)  // harga setelah diskon
+  status      TripStatus @default(ONGOING)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  
+  // Relasi
+  booking     Booking    @relation(fields: [bookingId], references: [id])
+
+  @@map("trips")
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relasi
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("locations")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  content   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relasi
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
