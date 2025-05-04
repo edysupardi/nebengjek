@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { UserRepository } from './repositories/user.repository';
+import { UserRepository } from '@app/user/repositories/user.repository';
 import { User } from '@app/common';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UserResponseDto } from './dto/user-response.dto';
+import { UpdateUserDto } from '@app/user/dto/update-user.dto';
+import { UserResponseDto } from '@app/user/dto/user-response.dto';
 import { plainToClass } from 'class-transformer';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { ChangePasswordDto } from '@app/user/dto/change-password.dto';
 import { RegisterUserDto } from '@app/auth/dto/register-user.dto';
 import * as bcrypt from 'bcrypt';
 

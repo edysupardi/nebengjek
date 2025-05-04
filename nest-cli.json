@@ -8,15 +8,6 @@
     "tsConfigPath": "tsconfig.json"
   },
   "projects": {
-    "api-gateway": {
-      "type": "application",
-      "root": "apps/api-gateway",
-      "entryFile": "main",
-      "sourceRoot": "apps/api-gateway/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
-      }
-    },
     "user-service": {
       "type": "application",
       "root": "apps/user-service",
@@ -24,6 +15,24 @@
       "sourceRoot": "apps/user-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/user-service/tsconfig.app.json"
+      }
+    },
+    "tracking-service": {
+      "type": "application",
+      "root": "apps/tracking-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/tracking-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/tracking-service/tsconfig.app.json"
+      }
+    },
+    "api-gateway": {
+      "type": "application",
+      "root": "apps/api-gateway",
+      "entryFile": "main",
+      "sourceRoot": "apps/api-gateway/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
       }
     },
     "matching-service": {
