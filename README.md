@@ -91,6 +91,10 @@ Entity yang dirancang:
 
     `npx prisma generate`
 
+    jika belum ada table nya, dapat menjalankan migration dengan cara `npx prisma migrate dev`, jika di database tersebut sebelumnya sudah ada schema public, dapat menjalankan `npx prisma migrate reset` (hati-hati dengan perintah ini, ini akan menghapus semua data di database).
+
+    Dan jika butuh data seeder dan menjalankan seeder dengan cara `npx prisma db seed`
+
 3. Jalankan aplikasi:
 
     `nx run-many --target=serve --all`
