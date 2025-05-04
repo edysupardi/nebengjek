@@ -20,12 +20,6 @@ export class UpdateUserDto {
   })
   phone?: string;
 
-  @IsString()
-  @IsOptional()
-  @MinLength(6)
-  @MaxLength(50)
-  password?: string;
-
   // Note: role cannot be updated through this endpoint for security
   // Only admin should be able to change user roles
 }

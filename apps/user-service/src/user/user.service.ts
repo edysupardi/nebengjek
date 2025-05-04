@@ -14,10 +14,20 @@ export class UserService {
   constructor(private readonly userRepository: UserRepository) {}
 
   async updateProfile(userId: string, updateDto: UpdateUserDto): Promise<UserResponseDto> {
-    // If password is being updated, hash it first
-    if (updateDto.password) {
-      this.logger.log(`Hashing password for user ID: ${userId}`);
-      updateDto.password = await bcrypt.hash(updateDto.password, 10);
+    if (updateDto.email) {
+      const existingUserByEmail = await this.userRepository.findByEmail(updateDto.email);
+      if (existingUserByEmail && existingUserByEmail.id.toString() !== userId) {
+        this.logger.error(`Email ${updateDto.email} is already in use`);
+        throw new BadRequestException('Email is already in use');
+      }
+    }
+
+    if (updateDto.phone) {
+      const existingUserByPhone = await this.userRepository.findByPhone(updateDto.phone);
+      if (existingUserByPhone && existingUserByPhone.id.toString() !== userId) {
+        this.logger.error(`Phone number ${updateDto.phone} is already in use`);
+        throw new BadRequestException('Phone number is already in use');
+      }
     }
 
     const updatedUser = await this.userRepository.update(userId, updateDto);
@@ -29,7 +39,7 @@ export class UserService {
     return plainToClass(UserResponseDto, updatedUser);
   }
 
-  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<void> {
+  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<UserResponseDto> {
     const { currentPassword, newPassword, confirmPassword } = changePasswordDto;
 
     if (newPassword !== confirmPassword) {
@@ -49,6 +59,11 @@ export class UserService {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
+    if (currentPassword === newPassword) {
+      this.logger.error(`New password cannot be the same as current password for user ID: ${userId}`);
+      throw new BadRequestException('New password cannot be the same as current password');
+    }
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     const updatedUser = await this.userRepository.update(userId, { password: hashedPassword });
@@ -56,6 +71,8 @@ export class UserService {
       this.logger.error(`Failed to update password for user ID: ${userId}`);
       throw new BadRequestException('Failed to update password');
     }
+    this.logger.log(`Password updated for user ID: ${userId}`);
+    return this.getProfile(userId);
   }
 
   async findByEmail(email: string): Promise<User | null> {
@@ -82,8 +99,8 @@ export class UserService {
     return plainToClass(UserResponseDto, newUser);
   }
 
-  async getProfile(userId: number): Promise<UserResponseDto> {
-    const user = await this.userRepository.findById(userId.toString());
+  async getProfile(userId: string): Promise<UserResponseDto> {
+    const user = await this.userRepository.findById(userId);
     if (!user) {
       this.logger.error(`User not found for ID: ${userId}`);
       throw new UnauthorizedException('User not found');

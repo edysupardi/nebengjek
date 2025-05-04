@@ -5,10 +5,10 @@ import { Body, Controller, Logger, Post, UseGuards, Get, Put, Request } from '@n
 import { UserResponseDto } from '@app/user/dto/user-response.dto';
 import { UpdateUserDto } from '@app/user/dto/update-user.dto';
 import { UserService } from '@app/user/user.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
-@Controller('users')
 @UseGuards(JwtAuthGuard)
-@Controller('users')
+@Controller('user')
 export class UserController {
   private readonly logger = new Logger(UserController.name);
 
@@ -36,5 +36,14 @@ export class UserController {
   ): Promise<UserResponseDto> {
     this.logger.log(`Updating profile for user ID: ${req.user.userId}`);
     return this.userService.updateProfile(req.user.userId, updateDto);
+  }
+
+  @Put('password')
+  async changePassword(
+    @Request() req: any,
+    @Body() changePasswordDto: ChangePasswordDto
+  ): Promise<UserResponseDto> {
+    this.logger.log(`Changing password for user ID: ${req.user.userId}`);
+    return this.userService.changePassword(req.user.userId, changePasswordDto);
   }
 }

@@ -51,6 +51,14 @@ export class DriverService {
     return driverProfile;
   }
 
+  /**
+   * Updates the driver's active status and manages their real-time tracking state in Redis
+   * 
+   * @param userId - The unique identifier of the user/driver
+   * @param status - Boolean indicating whether the driver is active (true) or inactive (false)
+   * @returns Promise containing the updated driver profile
+   * @throws {NotFoundException} When the driver profile cannot be found for the given user ID
+   */
   async updateStatus(userId: string, status: boolean) {
     const driverProfile = await this.driverProfileRepository.findByUserId(userId);
     if (!driverProfile) {
