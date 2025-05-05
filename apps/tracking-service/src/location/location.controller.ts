@@ -11,7 +11,7 @@ export class LocationController {
   private readonly logger = new Logger(LocationController.name);
   constructor(private readonly locationService: LocationService) {}
 
-  // for update location customer/driver
+  // for real tracking location customer/driver
   @Post('update')
   async updateLocation(
     @CurrentUser() user: any,

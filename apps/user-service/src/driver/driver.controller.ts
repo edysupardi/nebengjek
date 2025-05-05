@@ -27,6 +27,7 @@ export class DriverController {
     return this.driverService.updateStatus(req.user.userId, statusDto.status);
   }
 
+  // Memperbarui "last known location" di profil driver
   @Put('location')
   @Roles(UserRole.DRIVER)
   async updateLocation(@Request() req: any, @Body() locationDto: UpdateLocationDto) {
