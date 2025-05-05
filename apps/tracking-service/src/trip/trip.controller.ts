@@ -30,7 +30,7 @@ export class TripController {
     return this.tripService.endTrip(tripId, user.userId, endTripDto);
   }
 
-  // for update trip location customer/driver realtime
+  // for update trip location customer/driver realtime and calculate total travel
   @Put(':tripId/location')
   async updateTripLocation(
     @CurrentUser() user: any,

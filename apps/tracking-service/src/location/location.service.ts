@@ -107,6 +107,17 @@ export class LocationService {
     }
   }
 
+  /**
+   * Retrieves location history for a specific user within a given time range.
+   * If no time range is specified, defaults to the last 24 hours.
+   * 
+   * @param userId - The unique identifier of the user
+   * @param startTime - Optional ISO date string for the start of the time range
+   * @param endTime - Optional ISO date string for the end of the time range
+   * @returns Promise containing an array of location records for the specified user and time range
+   * @throws Error if start time is later than end time
+   * @throws Error if database query fails or if dates are invalid
+   */
   async getLocationHistory(userId: string, startTime?: string, endTime?: string) {
     try {
       const start = startTime ? new Date(startTime) : new Date(Date.now() - 24 * 60 * 60 * 1000);
