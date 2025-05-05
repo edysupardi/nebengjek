@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Query, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, Query, Logger, HttpCode } from '@nestjs/common';
 import { LocationService } from '@app/location/location.service';
 import { UpdateLocationDto } from '@app/location/dto/update-location.dto';
 import { GetNearbyDriversDto } from '@app/location/dto/get-nearby-drivers.dto';
@@ -26,6 +26,7 @@ export class LocationController {
   }
 
   @Post('nearby-drivers')
+  @HttpCode(200)
   async getNearbyDrivers(@Body() getNearbyDriversDto: GetNearbyDriversDto) {
     this.logger.log(`Getting nearby drivers for lat: ${getNearbyDriversDto.latitude}, long: ${getNearbyDriversDto.longitude}, radius: ${getNearbyDriversDto.radius}`);
     return this.locationService.getNearbyDrivers(
@@ -35,7 +36,7 @@ export class LocationController {
     );
   }
 
-  // for get location customer/driver
+  // for get location driver
   @Get('user/:userId')
   async getUserLocation(@Param('userId') userId: string) {
     this.logger.log(`Getting location for user ID: ${userId}`);
