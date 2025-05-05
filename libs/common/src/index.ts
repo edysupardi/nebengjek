@@ -1,3 +1,8 @@
+// Export health module
+export * from './health/health.module';
+export * from './health/health.service';
+export * from './health/health.controller';
+
 // Export entities
 export * from './entities';
 
@@ -7,13 +12,13 @@ export * from './enums';
 // Export constants
 export * from './constants';
 
-// // Export interceptors
+// Export interceptors
 export * from './interceptors';
 
-// // Export decorators
+// Export decorators
 export * from './decorators';
 
-// // Export guards
+// Export guards
 export * from './guards';
 
 // Export DTOs

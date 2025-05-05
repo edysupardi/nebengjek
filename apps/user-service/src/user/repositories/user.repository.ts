@@ -25,7 +25,7 @@ export class UserRepository {
     return {
       ...user,
       email: user.email ?? undefined,
-    } as User;
+    } as UserWithRelations;
   }
 
   async findByPhone(phone: string): Promise<User | null> {

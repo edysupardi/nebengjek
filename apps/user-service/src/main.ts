@@ -28,7 +28,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
 
   const port = process.env.USER_PORT || 3000;
-  console.log(`Application is running on port ${port}`);
+  console.log(`User service is running on port ${port}`);
   await app.listen(port);
 }
 bootstrap();

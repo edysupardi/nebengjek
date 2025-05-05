@@ -3,9 +3,9 @@ import { Controller, Post, Body, UseGuards, Request, Logger, HttpCode, Unauthori
 import { AuthService } from '@app/auth/auth.service';
 import { LoginUserDto } from '@app/auth/dto/login-user.dto';
 import { AuthGuard } from '@nestjs/passport';
-import { LoginResponseDto } from './dto/response-login.dto';
-import { RefreshTokenResponseDto } from './dto/response-refresh-token.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { LoginResponseDto } from '@app/auth/dto/response-login.dto';
+import { RefreshTokenResponseDto } from '@app/auth/dto/response-refresh-token.dto';
+import { RefreshTokenDto } from '@app/auth/dto/refresh-token.dto';
 
 @Controller('auth')
 export class AuthController {

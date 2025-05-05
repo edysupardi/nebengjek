@@ -1,15 +1,20 @@
-import { forwardRef, Module } from '@nestjs/common';
-import { UserService } from '@app/user/user.service';
-import { UserController } from '@app/user/user.controller';
-import { UserRepository } from '@app/user/repositories/user.repository';
-import { AuthModule } from '@app/auth/auth.module';
-import { HealthModule } from '@app/common/health/health.module';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LocationModule } from '@app/location/location.module';
+import { TripModule } from '@app/trip/trip.module';
+import { LoggingModule } from '@app/common/modules/logging.module';
+import { MaintenanceService } from '@app/tracking-maintenance/maintenance.service';
+import { HealthModule } from '@app/common/health/health.module';
 import { PrismaService } from '@app/database';
 
 @Module({
   imports: [
-    forwardRef(() => AuthModule),
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    LocationModule,
+    TripModule,
+    LoggingModule,
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
@@ -25,8 +30,6 @@ import { PrismaService } from '@app/database';
       inject: [ConfigService],
     }),
   ],
-  providers: [UserService, UserRepository],
-  controllers: [UserController],
-  exports: [UserService],
+  providers: [MaintenanceService],
 })
-export class UserModule {}
+export class TrackingModule {}

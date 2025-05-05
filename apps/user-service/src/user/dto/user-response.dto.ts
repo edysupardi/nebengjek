@@ -1,7 +1,7 @@
 import { UserRole } from '@prisma/client';
 import { Exclude, Expose, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { DriverProfileResponseDto } from './driver-profile-response.dto';
+import { DriverProfileResponseDto } from '@app/user/dto/driver-profile-response.dto';
 
 @Exclude()
 export class UserResponseDto {

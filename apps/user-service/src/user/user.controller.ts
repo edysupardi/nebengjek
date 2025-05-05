@@ -1,11 +1,11 @@
 import { AuthService } from '@app/auth/auth.service';
 import { RegisterUserDto } from '@app/auth/dto/register-user.dto';
-import { JwtAuthGuard } from '@app/auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
 import { Body, Controller, Logger, Post, UseGuards, Get, Put, Request } from '@nestjs/common';
 import { UserResponseDto } from '@app/user/dto/user-response.dto';
 import { UpdateUserDto } from '@app/user/dto/update-user.dto';
 import { UserService } from '@app/user/user.service';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { ChangePasswordDto } from '@app/user/dto/change-password.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('user')
