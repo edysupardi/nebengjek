@@ -50,6 +50,25 @@ export class TripService {
     }
   }
 
+  /**
+   * Updates the location of a trip and calculates the total distance traveled.
+   * 
+   * @param tripId - The unique identifier of the trip
+   * @param userId - The unique identifier of the user associated with the trip
+   * @param updateLocationDto - DTO containing the new location coordinates
+   * @returns An object containing tripId, total distance traveled, and current location
+   * 
+   * @throws {NotFoundException} When trip is not found in Redis or has expired
+   * 
+   * This method:
+   * 1. Retrieves trip data from Redis
+   * 2. Adds new location to trip's location history
+   * 3. Calculates distance from previous location if it exists
+   * 4. Updates total distance if movement >= 1km
+   * 5. Updates Redis with new trip data
+   * 6. Updates user's current location
+   * 7. Broadcasts location update via WebSocket
+   */
   async updateTripLocation(tripId: string, userId: string, updateLocationDto: UpdateTripLocationDto) {
     try {
       // Get trip data from Redis
@@ -241,6 +260,22 @@ export class TripService {
     return deg * (Math.PI / 180);
   }
 
+  /**
+   * Retrieves all trips associated with a specific user, whether as a driver or customer.
+   * The function transforms the raw trip data to include the user's role in each trip.
+   *
+   * @param userId - The unique identifier of the user whose trips are being retrieved
+   * @returns Promise<Array> - A promise that resolves to an array of trip objects containing:
+   *   - id: The trip's unique identifier
+   *   - bookingId: The associated booking identifier
+   *   - startTime: The trip's start timestamp
+   *   - endTime: The trip's end timestamp
+   *   - distance: The total distance of the trip
+   *   - finalPrice: The final price charged for the trip
+   *   - status: The current status of the trip
+   *   - role: The user's role in the trip (either 'DRIVER' or 'CUSTOMER')
+   * @throws Will throw and log an error if the database query fails
+   */
   async getUserTrips(userId: string) {
     try {
       // Get all trips for a user (both as driver and customer)
@@ -289,6 +324,29 @@ export class TripService {
     }
   }
   
+  /**
+   * Recovers and processes incomplete trips in the system.
+   * This method identifies trips that are in an incomplete state and attempts to resolve their status.
+   * 
+   * The recovery process includes:
+   * 1. Finding all incomplete trips from the database
+   * 2. Checking each trip's status in Redis
+   * 3. Processing trips based on their current state:
+   *    - For trips still in Redis:
+   *      - If no updates for > 1 hour: Marks as ABANDONED
+   *      - Otherwise: Keeps as STILL_ACTIVE
+   *    - For trips not in Redis: Marks as SYSTEM_ERROR
+   * 
+   * @throws {Error} If the recovery process fails
+   * @returns {Promise<{
+   *   totalIncomplete: number,
+   *   recovered: Array<{ id: string, status: 'FORCE_ENDED' | 'STILL_ACTIVE' }>,
+   *   failed: Array<{ id: string, error: string }>
+   * }>} Object containing:
+   *   - totalIncomplete: Total number of incomplete trips found
+   *   - recovered: Array of successfully processed trips with their new status
+   *   - failed: Array of trips that couldn't be processed, with error details
+   */
   async recoverIncompleteTrips() {
     try {
       const incompleteTrips = await this.tripRepository.findIncompleteTrips();
