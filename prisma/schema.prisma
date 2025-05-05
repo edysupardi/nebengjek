@@ -19,6 +19,7 @@ enum BookingStatus {
   PENDING
   ACCEPTED  // Driver menerima
   REJECTED  // Driver menolak
+  ONGOING // dalam/proses perjalanan
   CANCELLED // Customer membatalkan
   COMPLETED // Perjalanan selesai
 }
