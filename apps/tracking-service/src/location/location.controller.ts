@@ -6,13 +6,13 @@ import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 
 @Controller('location')
+@UseGuards(JwtAuthGuard)
 export class LocationController {
   private readonly logger = new Logger(LocationController.name);
   constructor(private readonly locationService: LocationService) {}
 
   // for update location customer/driver
   @Post('update')
-  @UseGuards(JwtAuthGuard)
   async updateLocation(
     @CurrentUser() user: any,
     @Body() updateLocationDto: UpdateLocationDto
@@ -37,14 +37,12 @@ export class LocationController {
 
   // for get location customer/driver
   @Get('user/:userId')
-  @UseGuards(JwtAuthGuard)
   async getUserLocation(@Param('userId') userId: string) {
     this.logger.log(`Getting location for user ID: ${userId}`);
     return this.locationService.getUserLocation(userId);
   }
 
   @Get('history/:userId')
-  @UseGuards(JwtAuthGuard)
   async getLocationHistory(
     @Param('userId') userId: string,
     @Query('startTime') startTime?: string,

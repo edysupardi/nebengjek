@@ -4,6 +4,7 @@ import { LocationService } from '@app/location/location.service';
 import { LocationRepository } from '@app/location/repositories/location.repository';
 import { PrismaService } from '@app/database';
 import { ConfigService } from '@nestjs/config';
+import { JwtStrategy } from '@app/common/strategies/jwt.strategy';
 
 @Module({
   controllers: [LocationController],
@@ -11,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
     LocationService,
     LocationRepository,
     PrismaService,
+    JwtStrategy,
     {
       provide: 'REDIS_CLIENT',
       useFactory: (configService: ConfigService) => {

@@ -5,8 +5,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { UserModule } from '@app/user/user.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisModule } from '@app/database/redis/redis.module';
-import { JwtStrategy } from '@app/auth/jwt.strategy';
-import { JwtRefreshStrategy } from '@app/auth/jwt-refresh.strategy';
+import { JwtStrategy } from '@app/common/strategies/jwt.strategy';
+import { JwtRefreshStrategy } from '@app/common/strategies/jwt-refresh.strategy';
 import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
 
 console.log('UserModule:', UserModule);
