@@ -9,8 +9,6 @@ import { JwtStrategy } from '@app/common/strategies/jwt.strategy';
 import { JwtRefreshStrategy } from '@app/common/strategies/jwt-refresh.strategy';
 import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
 
-console.log('UserModule:', UserModule);
-
 @Module({
   imports: [
     ConfigModule,

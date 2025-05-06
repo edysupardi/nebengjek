@@ -1,4 +1,4 @@
-import { User } from "./user.entity";
+import { User } from './user.entity';
 
 export class Location {
   id: string;
@@ -7,7 +7,7 @@ export class Location {
   longitude: number;
   timestamp: Date;
   createdAt: Date;
-
-  // Relations
+  
+  // Relasi
   user?: User;
 }

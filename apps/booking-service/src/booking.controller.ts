@@ -4,7 +4,7 @@ import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
 import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.dto';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
-import { JwtAuthGuard } from '@app/common';
+import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)

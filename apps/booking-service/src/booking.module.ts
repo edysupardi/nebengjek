@@ -4,24 +4,34 @@ import { BookingController } from '@app/booking/booking.controller';
 import { BookingService } from '@app/booking/booking.service';
 import { BookingRepository } from '@app/booking/repositories/booking.repository';
 import { PrismaService } from '@app/database';
-import { PassportModule } from '@nestjs/passport';
-import { JwtModule } from '@nestjs/jwt';
-import { JwtStrategy } from '@app/common/strategies/jwt.strategy';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { HttpModule } from '@nestjs/axios';
+import { LoggingModule } from '@app/common/modules/logging.module';
+import { HealthModule } from '@app/common';
 
+/**
+ * @module BookingModule
+ * @description Module responsible for handling booking-related functionality in the application
+ */
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
     }),
-    PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
+    LoggingModule,
+    HealthModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const Redis = require('ioredis');
+        return {
+          redis: new Redis({
+            host: configService.get('REDIS_HOST', 'localhost'),
+            port: configService.get('REDIS_PORT', 6379),
+          }),
+          prisma: new PrismaService(),
+        };
+      },
       inject: [ConfigService],
     }),
     HttpModule,
@@ -33,7 +43,7 @@ import { HttpModule } from '@nestjs/axios';
           transport: Transport.TCP,
           options: {
             host: configService.get('TRACKING_SERVICE_HOST', 'localhost'),
-            port: configService.get('TRACKING_SERVICE_PORT', 3003),
+            port: configService.get('TRACKING_PORT', 3003),
           },
         }),
         inject: [ConfigService],
@@ -45,7 +55,7 @@ import { HttpModule } from '@nestjs/axios';
           transport: Transport.TCP,
           options: {
             host: configService.get('NOTIFICATION_SERVICE_HOST', 'localhost'),
-            port: configService.get('NOTIFICATION_SERVICE_PORT', 3005),
+            port: configService.get('NOTIFICATION_PORT', 3004),
           },
         }),
         inject: [ConfigService],
@@ -57,18 +67,6 @@ import { HttpModule } from '@nestjs/axios';
     BookingService,
     BookingRepository,
     PrismaService,
-    JwtStrategy,
-    {
-      provide: 'REDIS_CLIENT',
-      useFactory: (configService: ConfigService) => {
-        const Redis = require('ioredis');
-        return new Redis({
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get('REDIS_PORT', 6379),
-        });
-      },
-      inject: [ConfigService],
-    },
   ],
 })
 export class BookingModule {}

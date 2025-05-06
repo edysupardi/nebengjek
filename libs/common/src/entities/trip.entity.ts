@@ -1,19 +1,28 @@
-import { TripStatus } from '@prisma/client';
+import { TripStatus } from '../enums/trip-status.enum';
 import { Booking } from './booking.entity';
 
 export class Trip {
   id: string;
   bookingId: string;
   startTime: Date;
-  endTime: Date | null; // null jika trip belum selesai
-  distance: number; // dalam kilometer
-  price: number; // Rp 3.000/km
-  discount: number; // diskon dari driver (persentase)
-  finalPrice: number; // harga setelah diskon
+  endTime: Date | null;
+  distance: number;
+  
+  // Perhitungan harga yang lebih detail
+  basePrice: number;
+  discountAmount: number;
+  discountPercentage: number;
+  finalPrice: number;
+  
+  // Pembagian fee platform
+  platformFeePercentage: number;
+  platformFeeAmount: number;
+  driverAmount: number;
+  
   status: TripStatus;
   createdAt: Date;
   updatedAt: Date;
-
-  // Relations
+  
+  // Relasi
   booking?: Booking;
 }

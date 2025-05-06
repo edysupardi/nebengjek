@@ -5,6 +5,8 @@ import { StartTripDto } from '@app/trip/dto/start-trip.dto';
 import { EndTripDto } from '@app/trip/dto/end-trip.dto';
 import { UpdateTripLocationDto } from '@app/trip/dto/update-trip-location.dto';
 import { TripGateway } from '@app/trip/trip.gateway';
+import { EventPattern, MessagePattern } from '@nestjs/microservices';
+import { TripStatus } from '@app/common';
 
 @Injectable()
 export class TripService {
@@ -25,9 +27,17 @@ export class TripService {
       const trip = await this.tripRepository.create({
         bookingId: startTripDto.bookingId,
         startTime: new Date(),
-        status: 'ONGOING',
+        distance: 0,
+        basePrice: 0,
+        discountAmount: 0,
+        discountPercentage: 0,
+        finalPrice: 0,
+        platformFeePercentage: this.ADMIN_FEE_PERCENTAGE * 100, // 5%
+        platformFeeAmount: 0,
+        driverAmount: 0,
+        status: TripStatus.ONGOING,
       });
-
+  
       // Initialize trip tracking in Redis
       await this.redis.set(
         `trip:${trip.id}`,
@@ -37,11 +47,12 @@ export class TripService {
           startTime: trip.startTime,
           locations: [],
           totalDistance: 0,
+          lastUpdateTime: new Date().toISOString(),
         }),
         'EX',
         86400 // 24 hours expiry
       );      
-
+  
       this.logger.log(`Trip started: ${trip.id}`);
       return trip;
     } catch (error) {
@@ -145,40 +156,46 @@ export class TripService {
       if (!tripData) {
         throw new NotFoundException('Trip not found or expired');
       }
-
+  
       const trip = JSON.parse(tripData);
       
       // Calculate final cost
       const baseCost = Math.floor(trip.totalDistance) * this.PRICE_PER_KM;
-      const finalPrice = baseCost * (endTripDto.discountPercentage / 100);
-      const adminFee = finalPrice * this.ADMIN_FEE_PERCENTAGE;
-      const driverEarnings = finalPrice - adminFee;
-
-      // Update trip in database
+      const discountPercentage = endTripDto.discountPercentage || 0;
+      const discountAmount = (baseCost * discountPercentage) / 100;
+      const finalPrice = baseCost - discountAmount;
+      const platformFeeAmount = finalPrice * this.ADMIN_FEE_PERCENTAGE;
+      const driverAmount = finalPrice - platformFeeAmount;
+  
+      // Update trip in database with new fields matching the schema
       const updatedTrip = await this.tripRepository.update(tripId, {
         endTime: new Date(),
         distance: trip.totalDistance,
-        price: baseCost,
-        discount: baseCost - finalPrice,
+        basePrice: baseCost,
+        discountAmount: discountAmount,
+        discountPercentage: discountPercentage,
         finalPrice: finalPrice,
-        status: 'COMPLETED',
+        platformFeePercentage: this.ADMIN_FEE_PERCENTAGE * 100, // Convert to percentage (5%)
+        platformFeeAmount: platformFeeAmount,
+        driverAmount: driverAmount,
+        status: TripStatus.COMPLETED,
       });
-
+  
       // Clean up Redis
       await this.redis.del(`trip:${tripId}`);
-
+  
       this.tripGateway.sendTripStatusUpdate(tripId, {
         status: 'COMPLETED',
         finalPrice: finalPrice,
         totalDistance: trip.totalDistance,
       });
-
+  
       this.logger.log(`Trip ended: ${tripId}, Total distance: ${trip.totalDistance}km, Final price: ${finalPrice}`);
-
+  
       return {
         ...updatedTrip,
-        adminFee,
-        driverEarnings,
+        platformFeeAmount,
+        driverAmount,
       };
     } catch (error) {
       this.logger.error('Failed to end trip:', error);
@@ -212,6 +229,7 @@ export class TripService {
 
   async calculateTripCost(tripId: string) {
     try {
+      // Get trip data from Redis
       const tripData = await this.redis.get(`trip:${tripId}`);
       if (!tripData) {
         // Get from database if trip is completed
@@ -219,27 +237,59 @@ export class TripService {
         if (!trip) {
           throw new NotFoundException('Trip not found');
         }
-
+  
         return {
           distance: trip.distance,
-          baseCost: trip.price,
+          basePrice: trip.basePrice,
           finalPrice: trip.finalPrice,
-          adminFee: trip.finalPrice * this.ADMIN_FEE_PERCENTAGE,
-          driverEarnings: trip.finalPrice * (1 - this.ADMIN_FEE_PERCENTAGE),
+          platformFeeAmount: trip.platformFeeAmount,
+          driverAmount: trip.driverAmount,
         };
       }
-
+  
       const trip = JSON.parse(tripData);
       const baseCost = Math.floor(trip.totalDistance) * this.PRICE_PER_KM;
-
+      const platformFeeAmount = baseCost * this.ADMIN_FEE_PERCENTAGE;
+      const driverAmount = baseCost - platformFeeAmount;
+  
       return {
         distance: trip.totalDistance,
-        baseCost: baseCost,
+        basePrice: baseCost,
         estimatedFinalPrice: baseCost,
+        platformFeeAmount: platformFeeAmount,
+        driverAmount: driverAmount,
         pricePerKm: this.PRICE_PER_KM,
       };
     } catch (error) {
-      this.logger.error('Failed to calculate trip cost:', error);
+      this.logger.error(`Failed to calculate trip cost for trip ${tripId}:`, error);
+      throw error;
+    }
+  }
+
+  @MessagePattern('trip.calculateFinalCost')
+  async calculateFinalCost(data: { bookingId: string }) {
+    try {
+      // Cari trip berdasarkan bookingId
+      const trip = await this.tripRepository.findByBookingId(data.bookingId);
+      if (!trip) {
+        throw new NotFoundException('No trip found for this booking');
+      }
+      
+      // Gunakan fungsi yang sama untuk menghitung biaya
+      const costCalculation = await this.calculateTripCost(trip.id);
+      
+      // Return dengan format yang sesuai untuk message pattern
+      return {
+        bookingId: data.bookingId,
+        totalDistance: costCalculation.distance,
+        basePrice: costCalculation.basePrice,
+        platformFeePercentage: this.ADMIN_FEE_PERCENTAGE * 100,
+        platformFeeAmount: costCalculation.platformFeeAmount,
+        driverAmount: costCalculation.driverAmount,
+        finalPrice: costCalculation.finalPrice || costCalculation.estimatedFinalPrice
+      };
+    } catch (error) {
+      this.logger.error(`Failed to calculate final cost for booking ${data.bookingId}:`, error);
       throw error;
     }
   }
@@ -397,7 +447,7 @@ export class TripService {
     try {
       // Update trip status in database
       await this.tripRepository.update(tripId, {
-        status: 'COMPLETED',
+        status: TripStatus.COMPLETED,
         endTime: new Date(),
         // notes: `Force ended by system. Reason: ${reason}`,
       });
@@ -408,6 +458,71 @@ export class TripService {
       this.logger.warn(`Trip ${tripId} force ended. Reason: ${reason}`);
     } catch (error) {
       this.logger.error(`Failed to force end trip ${tripId}:`, error);
+      throw error;
+    }
+  }
+
+  @EventPattern('trip.complete')
+  async handleTripComplete(data: { bookingId: string, tripDetails: any }) {
+    try {
+      const tripId = await this.findTripIdByBookingId(data.bookingId);
+      if (!tripId) {
+        this.logger.error(`No trip found for booking ${data.bookingId}`);
+        return;
+      }
+      
+      // Update trip in database dengan data final
+      await this.tripRepository.update(tripId, {
+        endTime: new Date(),
+        status: TripStatus.COMPLETED,
+        distance: data.tripDetails.totalDistance,
+        basePrice: data.tripDetails.basePrice,
+        finalPrice: data.tripDetails.finalPrice,
+        platformFeePercentage: data.tripDetails.platformFeePercentage,
+        platformFeeAmount: data.tripDetails.platformFeeAmount,
+        driverAmount: data.tripDetails.driverAmount
+      });
+      
+      // Clean up Redis
+      await this.redis.del(`trip:${data.bookingId}`);
+      
+      // Broadcast ke WebSocket
+      this.tripGateway.sendTripStatusUpdate(tripId, {
+        status: 'COMPLETED',
+        finalPrice: data.tripDetails.finalPrice,
+        totalDistance: data.tripDetails.totalDistance
+      });
+      
+      this.logger.log(`Trip completed for booking ${data.bookingId}`);
+    } catch (error) {
+      this.logger.error(`Failed to handle trip complete for booking ${data.bookingId}:`, error);
+    }
+  }
+
+  // Helper function to find trip ID by booking ID
+  private async findTripIdByBookingId(bookingId: string): Promise<string | null> {
+    const trip = await this.tripRepository.findByBookingId(bookingId);
+    return trip ? trip.id : null;
+  }
+
+  @MessagePattern('trip.getDistance')
+  async getTripDistance(data: { bookingId: string }) {
+    try {
+      // Ambil trip dari Redis
+      const tripData = await this.redis.get(`trip:${data.bookingId}`);
+      if (!tripData) {
+        throw new NotFoundException('Trip not found or expired');
+      }
+
+      const trip = JSON.parse(tripData);
+      
+      return {
+        bookingId: data.bookingId,
+        totalDistanceKm: trip.totalDistance,
+        locations: trip.locations.length
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get trip distance for booking ${data.bookingId}:`, error);
       throw error;
     }
   }
