@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, Query } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, Query, Logger } from '@nestjs/common';
 import { BookingService } from '@app/booking/booking.service';
 import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
 import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.dto';
@@ -9,6 +9,7 @@ import { JwtAuthGuard } from '@app/common';
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
 export class BookingController {
+  private readonly logger = new Logger(BookingController.name);
   constructor(private readonly bookingService: BookingService) {}
 
   @Post()
@@ -16,11 +17,13 @@ export class BookingController {
     @CurrentUser() user: any,
     @Body() createBookingDto: CreateBookingDto
   ) {
+    this.logger.log(`Creating booking for user ${user.userId}`);
     return this.bookingService.createBooking(user.userId, createBookingDto);
   }
 
   @Get(':bookingId')
   async getBookingDetails(@Param('bookingId') bookingId: string) {
+    this.logger.log(`Fetching booking details for booking ID ${bookingId}`);
     return this.bookingService.getBookingDetails(bookingId);
   }
 
@@ -31,6 +34,7 @@ export class BookingController {
     @Query('page') page?: number,
     @Query('limit') limit?: number
   ) {
+    this.logger.log(`Fetching bookings for user ${user.userId} with status ${status}`);
     return this.bookingService.getUserBookings(user.userId, status, page, limit);
   }
 
@@ -40,6 +44,7 @@ export class BookingController {
     @Param('bookingId') bookingId: string,
     @Body() updateStatusDto: UpdateBookingStatusDto
   ) {
+    this.logger.log(`Updating booking status for booking ID ${bookingId} to ${updateStatusDto.status}`);
     return this.bookingService.updateBookingStatus(bookingId, user.userId, updateStatusDto.status);
   }
 
@@ -48,6 +53,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
+    this.logger.log(`Accepting booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.acceptBooking(bookingId, user.userId);
   }
 
@@ -56,6 +62,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
+    this.logger.log(`Rejecting booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.rejectBooking(bookingId, user.userId);
   }
 
@@ -64,6 +71,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
+    this.logger.log(`Cancelling booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.cancelBooking(bookingId, user.userId);
   }
 
@@ -72,6 +80,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
+    this.logger.log(`Completing booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.completeBooking(bookingId, user.userId);
   }
 
@@ -80,6 +89,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
+    this.logger.log(`Deleting booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.deleteBooking(bookingId, user.userId);
   }
 }

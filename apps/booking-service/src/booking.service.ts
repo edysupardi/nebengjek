@@ -26,6 +26,7 @@ export class BookingService {
       // First check if user already has active booking
       const activeBooking = await this.bookingRepository.findActiveBookingByCustomer(userId);
       if (activeBooking) {
+        this.logger.warn(`User ${userId} already has an active booking`);
         throw new BadRequestException('You already have an active booking');
       }
 
@@ -99,6 +100,7 @@ export class BookingService {
     try {
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
       
@@ -114,6 +116,7 @@ export class BookingService {
       const skip = (page - 1) * limit;
       const bookings = await this.bookingRepository.findByUser(userId, status, skip, limit);
       const total = await this.bookingRepository.countByUser(userId, status);
+      this.logger.log(`Total bookings found: ${total}`);
       
       return {
         data: bookings,
@@ -135,11 +138,13 @@ export class BookingService {
       // First check if booking exists
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
 
       // Check if user is authorized to update this booking
       if (booking.customerId !== userId && booking.driverId !== userId) {
+        this.logger.warn(`User ${userId} is not authorized to update booking ${bookingId}`);
         throw new UnauthorizedException('You are not authorized to update this booking');
       }
 
@@ -168,10 +173,12 @@ export class BookingService {
     try {
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
 
       if (booking.status !== BookingStatus.PENDING) {
+        this.logger.warn(`Cannot accept booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(`Booking is already ${booking.status}`);
       }
 
@@ -198,10 +205,12 @@ export class BookingService {
     try {
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
 
       if (booking.status !== BookingStatus.PENDING) {
+        this.logger.warn(`Cannot reject booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(`Cannot reject booking with status ${booking.status}`);
       }
 
@@ -222,6 +231,7 @@ export class BookingService {
     try {
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
 
@@ -230,6 +240,7 @@ export class BookingService {
         booking.status !== BookingStatus.PENDING &&
         booking.status !== BookingStatus.ACCEPTED
       ) {
+        this.logger.warn(`Cannot cancel booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(
           `Cannot cancel booking with status ${booking.status}`
         );
@@ -237,6 +248,7 @@ export class BookingService {
 
       // Verify that user is authorized to cancel
       if (booking.customerId !== userId && booking.driverId !== userId) {
+        this.logger.warn(`User ${userId} is not authorized to cancel booking ${bookingId}`);
         throw new UnauthorizedException('You are not authorized to cancel this booking');
       }
 
@@ -274,14 +286,17 @@ export class BookingService {
     try {
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
 
       if (booking.driverId !== driverId) {
+        this.logger.warn(`Driver ${driverId} is not authorized to complete booking ${bookingId}`);
         throw new UnauthorizedException('You are not the driver for this booking');
       }
 
       if (booking.status !== BookingStatus.ONGOING) {
+        this.logger.warn(`Cannot complete booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(
           `Cannot complete booking with status ${booking.status}`
         );
@@ -308,6 +323,7 @@ export class BookingService {
     try {
       const booking = await this.bookingRepository.findById(bookingId);
       if (!booking) {
+        this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
 
@@ -316,6 +332,7 @@ export class BookingService {
         booking.status !== BookingStatus.CANCELLED &&
         booking.status !== BookingStatus.COMPLETED
       ) {
+        this.logger.warn(`Cannot delete booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(
           `Cannot delete booking with status ${booking.status}`
         );
@@ -323,6 +340,7 @@ export class BookingService {
 
       // Verify that user is authorized to delete
       if (booking.customerId !== userId) {
+        this.logger.warn(`User ${userId} is not authorized to delete booking ${bookingId}`);
         throw new UnauthorizedException('Only the customer can delete a booking');
       }
 
@@ -349,24 +367,39 @@ export class BookingService {
       case BookingStatus.PENDING:
         // Customer can cancel, driver can accept or reject
         if (isCustomer && newStatus !== BookingStatus.CANCELLED) {
+          this.logger.warn(
+            `Customer can only cancel a pending booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
+          );
           throw new BadRequestException('Customer can only cancel a pending booking');
         }
         if (isDriver && ![BookingStatus.ACCEPTED, BookingStatus.REJECTED].includes(newStatus)) {
+          this.logger.warn(
+            `Driver can only accept or reject a pending booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
+          );
           throw new BadRequestException('Driver can only accept or reject a pending booking');
         }
         break;
       case BookingStatus.ACCEPTED:
         // Both can cancel, driver can start trip (ONGOING)
         if (isCustomer && newStatus !== BookingStatus.CANCELLED) {
+          this.logger.warn(
+            `Customer can only cancel an accepted booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
+          );
           throw new BadRequestException('Customer can only cancel an accepted booking');
         }
         if (isDriver && ![BookingStatus.CANCELLED, BookingStatus.ONGOING].includes(newStatus)) {
+          this.logger.warn(
+            `Driver can only cancel or start an accepted booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
+          );
           throw new BadRequestException('Driver can only cancel or start an accepted booking');
         }
         break;
       case BookingStatus.ONGOING:
         // Only driver can complete
         if (!isDriver || newStatus !== BookingStatus.COMPLETED) {
+          this.logger.warn(
+            `Only driver can complete an ongoing booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
+          );
           throw new BadRequestException('Only the driver can complete an ongoing booking');
         }
         break;
@@ -374,6 +407,9 @@ export class BookingService {
       case BookingStatus.CANCELLED:
       case BookingStatus.REJECTED:
         // No further status changes allowed
+        this.logger.warn(
+          `Cannot change status of a completed/cancelled/rejected booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
+        );
         throw new BadRequestException(`Cannot change status of a ${currentStatus} booking`);
     }
   }
@@ -388,5 +424,6 @@ export class BookingService {
     };
 
     this.notificationServiceClient.emit(event, payload);
+    this.logger.log(`Notified ${event} for booking ${booking.id}`);
   }
 }
