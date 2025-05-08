@@ -1,21 +1,29 @@
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus } from '../enums/booking-status.enum';
 import { User } from './user.entity';
 import { Trip } from './trip.entity';
 
 export class Booking {
   id: string;
   customerId: string;
-  driverId: string | null;  // Changed from driverId?: string to driverId: string | null
+  driverId?: string;
   pickupLat: number;
   pickupLng: number;
   destinationLat: number;
   destinationLng: number;
   status: BookingStatus;
+  
+  // Fields tracking waktu untuk setiap perubahan status
+  acceptedAt?: Date;
+  rejectedAt?: Date;
+  cancelledAt?: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  
   createdAt: Date;
   updatedAt: Date;
-
-  // Relations
+  
+  // Relasi
   customer?: User;
-  driver?: User | null;  // Also support null for consistency
-  trip?: Trip | null;    // Also support null for consistency
+  driver?: User;
+  trip?: Trip;
 }

@@ -19,6 +19,7 @@ enum BookingStatus {
   PENDING
   ACCEPTED  // Driver menerima
   REJECTED  // Driver menolak
+  ONGOING // dalam/proses perjalanan
   CANCELLED // Customer membatalkan
   COMPLETED // Perjalanan selesai
 }
@@ -76,6 +77,14 @@ model Booking {
   destinationLat Float         @map("destination_lat")
   destinationLng Float         @map("destination_lng")
   status         BookingStatus @default(PENDING)
+  
+  // Fields tracking waktu untuk setiap perubahan status
+  acceptedAt     DateTime?     @map("accepted_at")
+  rejectedAt     DateTime?     @map("rejected_at") 
+  cancelledAt    DateTime?     @map("cancelled_at")
+  startedAt      DateTime?     @map("started_at")
+  completedAt    DateTime?     @map("completed_at")
+  
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   
@@ -88,20 +97,29 @@ model Booking {
 }
 
 model Trip {
-  id          String     @id @default(uuid())
-  bookingId   String     @unique @map("booking_id")
-  startTime   DateTime   @map("start_time")
-  endTime     DateTime?  @map("end_time")
-  distance    Float      @default(0)  // dalam kilometer
-  price       Float      @default(0)  // Rp 3.000/km
-  discount    Float      @default(0)  // diskon dari driver (persentase)
-  finalPrice  Float      @default(0)  // harga setelah diskon
-  status      TripStatus @default(ONGOING)
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  id            String     @id @default(uuid())
+  bookingId     String     @unique @map("booking_id")
+  startTime     DateTime   @map("start_time")
+  endTime       DateTime?  @map("end_time")
+  distance      Float      @default(0)  // dalam kilometer
+  
+  // Perhitungan harga yang lebih detail
+  basePrice     Float      @default(0)  @map("base_price") // Rp 3.000/km
+  discountAmount Float     @default(0)  @map("discount_amount") // dalam rupiah
+  discountPercentage Float @default(0)  @map("discount_percentage") // persentase diskon
+  finalPrice    Float      @default(0)  @map("final_price") // harga setelah diskon
+  
+  // Pembagian fee platform
+  platformFeePercentage Float @default(5) @map("platform_fee_percentage") // default 5%
+  platformFeeAmount     Float @default(0) @map("platform_fee_amount")
+  driverAmount          Float @default(0) @map("driver_amount")
+  
+  status        TripStatus @default(ONGOING)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
   
   // Relasi
-  booking     Booking    @relation(fields: [bookingId], references: [id])
+  booking       Booking    @relation(fields: [bookingId], references: [id])
 
   @@map("trips")
 }

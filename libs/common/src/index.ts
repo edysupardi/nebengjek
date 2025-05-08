@@ -25,7 +25,7 @@ export * from './guards';
 // export * from './dto';
 
 // // Export interfaces
-// export * from './interfaces';
+export * from './interfaces';
 
 // // Export utilities
 // export * from './utils';

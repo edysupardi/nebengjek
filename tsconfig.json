@@ -24,6 +24,9 @@
       "@app/trip/*":                      ["apps/tracking-service/src/trip/*"],
       "@app/tracking-maintenance":        ["apps/tracking-service/src/maintenance"],
       "@app/tracking-maintenance/*":      ["apps/tracking-service/src/maintenance/*"],
+
+      "@app/booking":                     ["apps/booking-service/src"],
+      "@app/booking/*":                   ["apps/booking-service/src/*"],
     }
   },
   "include": ["apps/**/*", "libs/**/*"],

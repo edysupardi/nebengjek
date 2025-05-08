@@ -1,13 +1,30 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/database';
 import { Trip } from '@app/common/entities';
+import { Trip as PrismaTrip, Prisma } from '@prisma/client';
 
 @Injectable()
 export class TripRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  private transformTripToDomain(prismaTrip: PrismaTrip & { 
+    booking?: { 
+      customer: any;
+      driver: any | null;
+    } | null 
+  }): Trip {
+    return {
+      ...prismaTrip,
+      booking: prismaTrip.booking ? {
+        ...prismaTrip.booking,
+        driver: prismaTrip.booking.driver ?? undefined,
+        driverId: prismaTrip.booking.driver.id ?? undefined,
+      } : undefined
+    } as Trip;
+  }
+
   async create(data: Partial<Trip>): Promise<Trip> {
-    return this.prisma.trip.create({
+    const prismaTrip = await this.prisma.trip.create({
       data: data as any,
       include: {
         booking: {
@@ -18,10 +35,12 @@ export class TripRepository {
         },
       },
     });
+
+    return this.transformTripToDomain(prismaTrip);
   }
 
   async findById(id: string): Promise<Trip | null> {
-    return this.prisma.trip.findUnique({
+    const prismaTrip = await this.prisma.trip.findUnique({
       where: { id },
       include: {
         booking: {
@@ -32,10 +51,13 @@ export class TripRepository {
         },
       },
     });
+
+    if(!prismaTrip) return null;
+    return this.transformTripToDomain(prismaTrip);
   }
 
   async update(id: string, data: Partial<Trip>): Promise<Trip> {
-    return this.prisma.trip.update({
+    const prismaTrip = await this.prisma.trip.update({
       where: { id },
       data: data as any,
       include: {
@@ -47,19 +69,29 @@ export class TripRepository {
         },
       },
     });
+
+    return this.transformTripToDomain(prismaTrip);
   }
 
   async findByBookingId(bookingId: string): Promise<Trip | null> {
-    return this.prisma.trip.findFirst({
+    const prismaTrip = await this.prisma.trip.findFirst({
       where: { bookingId },
       include: {
-        booking: true,
+        booking: {
+          include: {
+            customer: true,
+            driver: true,
+          },
+        },
       },
     });
+
+    if(!prismaTrip) return null;
+    return this.transformTripToDomain(prismaTrip);
   }
 
   async findActiveTrips(): Promise<Trip[]> {
-    return this.prisma.trip.findMany({
+    const prismaTrips = await this.prisma.trip.findMany({
       where: {
         status: 'ONGOING',
       },
@@ -72,10 +104,12 @@ export class TripRepository {
         },
       },
     });
+
+    return prismaTrips.map(trip => this.transformTripToDomain(trip));
   }
 
   async findByUserId(userId: string): Promise<Trip[]> {
-    return this.prisma.trip.findMany({
+    const prismaTrips = await this.prisma.trip.findMany({
       where: {
         booking: {
           OR: [
@@ -96,10 +130,12 @@ export class TripRepository {
         createdAt: 'desc',
       },
     });
+
+    return prismaTrips.map(trip => this.transformTripToDomain(trip));
   }
   
   async findIncompleteTrips(): Promise<Trip[]> {
-    return this.prisma.trip.findMany({
+    const prismaTrips = await this.prisma.trip.findMany({
       where: {
         status: 'ONGOING',
         startTime: {
@@ -107,8 +143,15 @@ export class TripRepository {
         },
       },
       include: {
-        booking: true,
+        booking: {
+          include: {
+            customer: true,
+            driver: true,
+          },
+        },
       },
     });
+
+    return prismaTrips.map(trip => this.transformTripToDomain(trip));
   }
 }

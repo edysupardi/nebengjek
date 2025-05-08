@@ -11,6 +11,7 @@ import { PrismaService } from '@app/database';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
     }),
     LocationModule,
     TripModule,
