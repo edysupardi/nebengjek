@@ -120,6 +120,7 @@ model Trip {
   
   // Relasi
   booking       Booking    @relation(fields: [bookingId], references: [id])
+  transaction   Transaction?
 
   @@map("trips")
 }
@@ -150,4 +151,18 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id])
 
   @@map("notifications")
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  tripId      String   @unique
+  trip        Trip     @relation(fields: [tripId], references: [id])
+  totalFare   Float
+  driverShare Float    // 95% dari totalFare
+  platformFee Float    // 5% dari totalFare
+  discount    Float    @default(0) // Diskon yang diberikan driver (opsional)
+  finalAmount Float    // Jumlah akhir setelah diskon
+  status      String   // 'pending', 'paid', 'cancelled'
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
