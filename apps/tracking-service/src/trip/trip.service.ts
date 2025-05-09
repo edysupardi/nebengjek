@@ -7,12 +7,13 @@ import { UpdateTripLocationDto } from '@app/trip/dto/update-trip-location.dto';
 import { TripGateway } from '@app/trip/trip.gateway';
 import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { TripStatus } from '@app/common';
+import * as PriceConstant from '@app/common/constants/price.constant';
 
 @Injectable()
 export class TripService {
   private readonly logger = new Logger(TripService.name);
-  private readonly PRICE_PER_KM = 3000;
-  private readonly ADMIN_FEE_PERCENTAGE = 0.05;
+  private readonly PRICE_PER_KM = PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM;
+  private readonly ADMIN_FEE_PERCENTAGE = PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE / 100; // 5%
 
   constructor(
     private readonly tripRepository: TripRepository,
