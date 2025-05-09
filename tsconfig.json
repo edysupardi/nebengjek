@@ -27,6 +27,9 @@
 
       "@app/booking":                     ["apps/booking-service/src"],
       "@app/booking/*":                   ["apps/booking-service/src/*"],
+
+      "@app/payment":                     ["apps/payment-service/src"],
+      "@app/payment/*":                   ["apps/payment-service/src/*"],
     }
   },
   "include": ["apps/**/*", "libs/**/*"],

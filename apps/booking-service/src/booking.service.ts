@@ -6,6 +6,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { BookingNotification, NearbyDriver } from '@app/common';
+import * as PriceConstant from '@app/common/constants/price.constant';
 
 @Injectable()
 export class BookingService {
@@ -455,13 +456,12 @@ export class BookingService {
       );
       
       const distanceInKm = tripDataResponse.totalDistanceKm;
-      
-      // Hitung harga (Rp 3.000/km)
-      const pricePerKm = 3000; // in IDR
+
+      const pricePerKm = PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM; // in IDR
       const calculatedPrice = Math.round(distanceInKm * pricePerKm);
-      
+
       // Hitung fee platform (5%)
-      const platformFeePercentage = 0.05;
+      const platformFeePercentage = PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE / 100;
       const platformFee = Math.round(calculatedPrice * platformFeePercentage);
       const driverAmount = calculatedPrice - platformFee;
       
