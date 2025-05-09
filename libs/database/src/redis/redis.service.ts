@@ -102,4 +102,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   unsubscribe(channel: string): void {
     this.subscriber.unsubscribe(channel);
   }
+
+  getClient(): Redis {
+    return this.client;
+  }
 }

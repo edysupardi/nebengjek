@@ -47,6 +47,8 @@ model User {
   locations     Location[]
   notifications Notification[]
 
+  @@index([role]) // Index untuk query berdasarkan role (misal: mencari semua driver)
+  @@index([email]) // Jika sering query berdasarkan email untuk login
   @@map("users")
 }
 
@@ -64,6 +66,9 @@ model DriverProfile {
   
   // Relasi
   user          User      @relation(fields: [userId], references: [id])
+
+  @@index([status]) // Untuk mencari driver yang online
+  @@index([lastLatitude, lastLongitude]) // Untuk query geospatial/nearby drivers
 
   @@map("driver_profiles")
 }
@@ -92,6 +97,11 @@ model Booking {
   customer       User          @relation("CustomerBookings", fields: [customerId], references: [id])
   driver         User?         @relation("DriverBookings", fields: [driverId], references: [id])
   trip           Trip?
+
+  @@index([customerId]) // Untuk mencari booking berdasarkan customer
+  @@index([driverId]) // Untuk mencari booking berdasarkan driver
+  @@index([status]) // Untuk mencari booking berdasarkan status
+  @@index([createdAt]) // Untuk sorting dan filtering berdasarkan waktu
 
   @@map("bookings")
 }
@@ -122,6 +132,10 @@ model Trip {
   booking       Booking    @relation(fields: [bookingId], references: [id])
   transaction   Transaction?
 
+  @@index([status]) // Untuk mencari trip berdasarkan status
+  @@index([startTime]) // Untuk query berdasarkan waktu mulai
+  @@index([endTime]) // Untuk query berdasarkan waktu selesai
+
   @@map("trips")
 }
 
@@ -136,6 +150,9 @@ model Location {
   // Relasi
   user      User     @relation(fields: [userId], references: [id])
 
+  @@index([userId, timestamp]) // Untuk query history lokasi user tertentu
+  @@index([latitude, longitude]) // Untuk query geospatial
+
   @@map("locations")
 }
 
@@ -145,11 +162,15 @@ model Notification {
   type      String
   content   String
   isRead    Boolean  @default(false) @map("is_read")
+  relatedId String?  // ID of related entity (booking, trip, etc.)
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   
   // Relasi
   user      User     @relation(fields: [userId], references: [id])
 
+  @@index([userId]) // Meningkatkan performa query by userId
+  @@index([isRead]) // Meningkatkan performa query unread notifications
   @@map("notifications")
 }
 
@@ -157,12 +178,17 @@ model Transaction {
   id          String   @id @default(uuid())
   tripId      String   @unique
   trip        Trip     @relation(fields: [tripId], references: [id])
-  totalFare   Float
-  driverShare Float    // 95% dari totalFare
-  platformFee Float    // 5% dari totalFare
+  totalFare   Float    @map("total_fare")
+  driverShare Float    @map("driver_share") // 95% dari totalFare
+  platformFee Float    @map("platform_fee") // 5% dari totalFare
   discount    Float    @default(0) // Diskon yang diberikan driver (opsional)
-  finalAmount Float    // Jumlah akhir setelah diskon
+  finalAmount Float    @map("final_amount") // Jumlah akhir setelah diskon
   status      String   // 'pending', 'paid', 'cancelled'
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([status]) // Untuk mencari transaksi berdasarkan status
+  @@index([createdAt]) // Untuk reporting dan analisis berdasarkan waktu
+
+  @@map("transaction")
 }
