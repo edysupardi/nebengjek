@@ -1,14 +1,17 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { WinstonModule } from 'nest-winston';
 import { ProxyModule } from './proxy/proxy.module';
-import { AuthModule } from './auth/auth.module';
-import { HealthModule } from './health/health.module';
-import { MetricsModule } from './metrics/metrics.module';
-import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
-import { ErrorFilter } from './common/filters/error.filter';
-import { RateLimiterGuard } from './common/guards/rate-limiter.guard';
-import { CircuitBreakerModule } from './circuit-breaker/circuit-breaker.module';
+import { AuthModule } from '@app/auth/auth.module';
+import { HealthModule } from '@app/common/health/health.module';
+import { MetricsModule } from '@app/apigateway/metrics/metrics.module';
+import { LoggingInterceptor } from '@app/apigateway/common/interceptors/logging.interceptor';
+import { ErrorFilter } from '@app/apigateway/common/filters/error.filter';
+import { RateLimiterGuard } from '@app/apigateway/common/guards/rate-limiter.guard';
+import { CircuitBreakerModule } from '@app/apigateway/circuit-breaker/circuit-breaker.module';
+import { DatabaseModule } from '@app/database';
+import { createWinstonLoggerOptions } from '@app/apigateway/common/config/winston.config';
 
 @Module({
   imports: [
@@ -16,11 +19,17 @@ import { CircuitBreakerModule } from './circuit-breaker/circuit-breaker.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    WinstonModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => createWinstonLoggerOptions(configService),
+    }),
     ProxyModule,     // Handles request routing to microservices
     AuthModule,      // Centralized auth validation
     HealthModule,    // Health check endpoints for AWS load balancers
     MetricsModule,   // Expose metrics for CloudWatch
     CircuitBreakerModule, // Circuit breaker implementation
+    DatabaseModule,  // Database connection and configuration
   ],
   providers: [
     {

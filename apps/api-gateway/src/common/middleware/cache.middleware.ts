@@ -1,6 +1,7 @@
+// api-gateway/src/common/middleware/cache.middleware.ts
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { RedisService } from '../services/redis.service';
+import { RedisService } from '@app/database/redis/redis.service';
 
 @Injectable()
 export class CacheMiddleware implements NestMiddleware {
@@ -15,7 +16,7 @@ export class CacheMiddleware implements NestMiddleware {
     const cachedResponse = await this.redisService.get(cacheKey);
 
     if (cachedResponse) {
-      return res.send(JSON.parse(cachedResponse));
+      return res.send(cachedResponse);
     }
 
     // Store original send
@@ -27,8 +28,7 @@ export class CacheMiddleware implements NestMiddleware {
       if (res.statusCode === 200 && !req.originalUrl.includes('/critical/')) {
         this.redisService.set(
           cacheKey, 
-          JSON.stringify(body), 
-          'EX', 
+          body, 
           300 // 5 minutes TTL
         );
       }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
+import { CircuitBreakerService } from '@app/apigateway/circuit-breaker/circuit-breaker.service';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()

@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ProxyController } from './proxy.controller';
+import { ProxyController } from '@app/apigateway/proxy/proxy.controller';
 import { ProxyService } from './proxy.service';
 import { HttpModule } from '@nestjs/axios';
-import { CircuitBreakerModule } from '../circuit-breaker/circuit-breaker.module';
+import { CircuitBreakerModule } from '@app/apigateway/circuit-breaker/circuit-breaker.module';
 
 @Module({
   imports: [
