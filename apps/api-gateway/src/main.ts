@@ -1,9 +1,10 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { ResponseInterceptor } from '@app/common/interceptors';
+import { ref } from 'process';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -21,7 +22,10 @@ async function bootstrap() {
     transform: true,
     forbidNonWhitelisted: true,
   }));
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  const moduleRef = app.select(AppModule);
+  const reflector = moduleRef.get(Reflector);
+  const excludedPaths = [''];
+  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths));
   
   // CORS
   app.enableCors();
