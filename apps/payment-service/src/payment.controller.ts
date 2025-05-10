@@ -9,7 +9,7 @@ import { Roles } from '@app/common/decorators';
 import { UserRole } from '@app/common/enums';
 
 @Controller('payments')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name);
   constructor(private readonly paymentService: PaymentService) {}

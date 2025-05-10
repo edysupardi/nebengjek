@@ -1,13 +1,13 @@
 import { AuthService } from '@app/auth/auth.service';
 import { RegisterUserDto } from '@app/auth/dto/register-user.dto';
-import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 import { Body, Controller, Logger, Post, UseGuards, Get, Put, Request } from '@nestjs/common';
 import { UserResponseDto } from '@app/user/dto/user-response.dto';
 import { UpdateUserDto } from '@app/user/dto/update-user.dto';
 import { UserService } from '@app/user/user.service';
 import { ChangePasswordDto } from '@app/user/dto/change-password.dto';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 @Controller('user')
 export class UserController {
   private readonly logger = new Logger(UserController.name);

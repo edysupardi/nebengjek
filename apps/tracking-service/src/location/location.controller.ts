@@ -2,11 +2,11 @@ import { Controller, Post, Body, Get, Param, UseGuards, Query, Logger, HttpCode 
 import { LocationService } from '@app/location/location.service';
 import { UpdateLocationDto } from '@app/location/dto/update-location.dto';
 import { GetNearbyDriversDto } from '@app/location/dto/get-nearby-drivers.dto';
-import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 
 @Controller('location')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 export class LocationController {
   private readonly logger = new Logger(LocationController.name);
   constructor(private readonly locationService: LocationService) {}

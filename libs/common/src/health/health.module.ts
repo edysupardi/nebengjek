@@ -5,6 +5,8 @@ import { HealthService } from './health.service';
 export interface HealthModuleOptions {
   redis: any;
   prisma: any;
+  serviceName?: string;
+  additionalChecks?: Record<string, () => Promise<boolean>>;
 }
 
 export interface HealthModuleAsyncOptions {
@@ -20,7 +22,13 @@ export class HealthModule {
       module: HealthModule,
       controllers: [HealthController],
       providers: [
-        HealthService,
+        {
+          provide: 'HEALTH_OPTIONS',
+          useValue: {
+            serviceName: options.serviceName || 'unknown-service',
+            additionalChecks: options.additionalChecks || {},
+          },
+        },
         {
           provide: 'REDIS_CLIENT',
           useValue: options.redis,
@@ -29,6 +37,7 @@ export class HealthModule {
           provide: 'PRISMA_SERVICE',
           useValue: options.prisma,
         },
+        HealthService,
       ],
       exports: [HealthService],
     };
@@ -47,6 +56,14 @@ export class HealthModule {
       controllers: [HealthController],
       providers: [
         optionsProvider,
+        {
+          provide: 'HEALTH_OPTIONS',
+          useFactory: (opts: HealthModuleOptions) => ({
+            serviceName: opts.serviceName || 'unknown-service',
+            additionalChecks: opts.additionalChecks || {},
+          }),
+          inject: ['HEALTH_MODULE_OPTIONS'],
+        },
         {
           provide: 'REDIS_CLIENT',
           useFactory: (opts: HealthModuleOptions) => opts.redis,

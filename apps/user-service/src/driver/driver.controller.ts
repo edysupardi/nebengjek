@@ -8,7 +8,7 @@ import { UpdateLocationDto } from '@app/driver/dto/update-location.dto';
 import { JwtAuthGuard } from "@app/common/guards/jwt-auth.guard";
 
 @Controller('driver')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 export class DriverController {
   private readonly logger = new Logger(DriverController.name);
   constructor(private readonly driverService: DriverService) {}

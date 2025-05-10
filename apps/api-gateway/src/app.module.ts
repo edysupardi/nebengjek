@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { WinstonModule } from 'nest-winston';
-import { ProxyModule } from './proxy/proxy.module';
+import { ProxyModule } from '@app/apigateway/proxy/proxy.module';
 import { AuthModule } from '@app/auth/auth.module';
 import { HealthModule } from '@app/common/health/health.module';
 import { MetricsModule } from '@app/apigateway/metrics/metrics.module';
@@ -12,6 +12,8 @@ import { RateLimiterGuard } from '@app/apigateway/common/guards/rate-limiter.gua
 import { CircuitBreakerModule } from '@app/apigateway/circuit-breaker/circuit-breaker.module';
 import { DatabaseModule } from '@app/database';
 import { createWinstonLoggerOptions } from '@app/apigateway/common/config/winston.config';
+import { JwtModule } from '@nestjs/jwt';
+import { SecurityMiddleware } from '@app/apigateway/common/middleware/security.middleware';
 
 @Module({
   imports: [
@@ -30,6 +32,16 @@ import { createWinstonLoggerOptions } from '@app/apigateway/common/config/winsto
     MetricsModule,   // Expose metrics for CloudWatch
     CircuitBreakerModule, // Circuit breaker implementation
     DatabaseModule,  // Database connection and configuration
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get('JWT_ACCESS_SECRET'),
+        signOptions: { 
+          expiresIn: configService.get('JWT_ACCESS_EXPIRES_IN', '15m'),
+        },
+      }),
+    }),
   ],
   providers: [
     {
@@ -46,4 +58,10 @@ import { createWinstonLoggerOptions } from '@app/apigateway/common/config/winsto
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(SecurityMiddleware)
+      .forRoutes('*');
+  }
+}
