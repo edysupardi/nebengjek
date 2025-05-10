@@ -1,0 +1,429 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NebengJek Database Stack'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: The deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+  
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+  
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+  
+  DatabaseMasterUsername:
+    Type: String
+    Default: admin
+    Description: Database master username
+    NoEcho: true
+  
+  DatabaseMasterPassword:
+    Type: String
+    Description: Database master password
+    NoEcho: true
+  
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t3.small
+    Description: The database instance class
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+      - db.r5.large
+      - db.r5.xlarge
+
+Resources:
+  # Security Group for RDS
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !ImportValue ApiGatewaySecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !ImportValue UserServiceSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-database-sg"
+  
+  # Database Subnet Group
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DB subnet group for NebengJek
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-database-subnet-group"
+  
+  # PostgreSQL RDS Instance
+  PostgreSQLInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 7
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Sub "${Environment}-nebengjek-db"
+      DBName: nebengjek
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: postgres
+      EngineVersion: '13.4'
+      MasterUsername: !Ref DatabaseMasterUsername
+      MasterUserPassword: !Ref DatabaseMasterPassword
+      MultiAZ: !If [IsProduction, true, false]
+      Port: 5432
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-nebengjek-db"
+  
+  # Database Credentials for each service
+  # User Service Database
+  UserServiceDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Environment}/database/user-service"
+      Description: Database credentials for User Service
+      SecretString: !Sub '{"username":"user_svc","password":"${UserServiceDatabasePassword}"}'
+  
+  UserServiceDatabaseUser:
+    Type: AWS::RDS::DBInstance
+    DependsOn: PostgreSQLInstance
+    Properties:
+      Engine: postgres
+      SourceDBInstanceIdentifier: !Ref PostgreSQLInstance
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      SkipFinalSnapshot: true
+      DBInstanceIdentifier: !Sub "${Environment}-user-service-temp"
+    DeletionPolicy: Delete
+  
+  # Booking Service Database
+  BookingServiceDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Environment}/database/booking-service"
+      Description: Database credentials for Booking Service
+      SecretString: !Sub '{"username":"booking_svc","password":"${BookingServiceDatabasePassword}"}'
+  
+  # Payment Service Database
+  PaymentServiceDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Environment}/database/payment-service"
+      Description: Database credentials for Payment Service
+      SecretString: !Sub '{"username":"payment_svc","password":"${PaymentServiceDatabasePassword}"}'
+  
+  # Notification Service Database
+  NotificationServiceDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Environment}/database/notification-service"
+      Description: Database credentials for Notification Service
+      SecretString: !Sub '{"username":"notification_svc","password":"${NotificationServiceDatabasePassword}"}'
+  
+  # Tracking Service Database
+  TrackingServiceDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Environment}/database/tracking-service"
+      Description: Database credentials for Tracking Service
+      SecretString: !Sub '{"username":"tracking_svc","password":"${TrackingServiceDatabasePassword}"}'
+  
+  # Custom Resources to create database schemas and users
+  CreateDatabaseResources:
+    Type: Custom::CreateDatabaseResources
+    DependsOn: PostgreSQLInstance
+    Properties:
+      ServiceToken: !GetAtt CreateDatabaseResourcesFunction.Arn
+      Region: !Ref AWS::Region
+      DatabaseEndpoint: !GetAtt PostgreSQLInstance.Endpoint.Address
+      DatabasePort: !GetAtt PostgreSQLInstance.Endpoint.Port
+      MasterUsername: !Ref DatabaseMasterUsername
+      MasterPassword: !Ref DatabaseMasterPassword
+      UserServiceUsername: user_svc
+      UserServicePassword: !Sub "{{resolve:secretsmanager:${UserServiceDatabaseSecret}:SecretString:password}}"
+      UserServiceDatabaseName: user_service
+      BookingServiceUsername: booking_svc
+      BookingServicePassword: !Sub "{{resolve:secretsmanager:${BookingServiceDatabaseSecret}:SecretString:password}}"
+      BookingServiceDatabaseName: booking_service
+      PaymentServiceUsername: payment_svc
+      PaymentServicePassword: !Sub "{{resolve:secretsmanager:${PaymentServiceDatabaseSecret}:SecretString:password}}"
+      PaymentServiceDatabaseName: payment_service
+      NotificationServiceUsername: notification_svc
+      NotificationServicePassword: !Sub "{{resolve:secretsmanager:${NotificationServiceDatabaseSecret}:SecretString:password}}"
+      NotificationServiceDatabaseName: notification_service
+      TrackingServiceUsername: tracking_svc
+      TrackingServicePassword: !Sub "{{resolve:secretsmanager:${TrackingServiceDatabaseSecret}:SecretString:password}}"
+      TrackingServiceDatabaseName: tracking_service
+  
+  # Lambda Function to create database schemas and users
+  CreateDatabaseResourcesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.8
+      Timeout: 300
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import psycopg2
+          import time
+          
+          def handler(event, context):
+            response_data = {}
+            
+            # Skip if this is a delete operation
+            if event['RequestType'] == 'Delete':
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+              return
+            
+            # Parameters
+            region = event['ResourceProperties']['Region']
+            db_endpoint = event['ResourceProperties']['DatabaseEndpoint']
+            db_port = event['ResourceProperties']['DatabasePort']
+            master_username = event['ResourceProperties']['MasterUsername']
+            master_password = event['ResourceProperties']['MasterPassword']
+            
+            # Wait for RDS to be fully available
+            time.sleep(30)
+            
+            try:
+              # Connect to the database
+              conn = psycopg2.connect(
+                host=db_endpoint,
+                port=db_port,
+                database='nebengjek',
+                user=master_username,
+                password=master_password
+              )
+              conn.autocommit = True
+              cursor = conn.cursor()
+              
+              # Create databases and users for each service
+              services = [
+                {
+                  'name': 'UserService',
+                  'username': event['ResourceProperties']['UserServiceUsername'],
+                  'password': event['ResourceProperties']['UserServicePassword'],
+                  'database': event['ResourceProperties']['UserServiceDatabaseName']
+                },
+                {
+                  'name': 'BookingService',
+                  'username': event['ResourceProperties']['BookingServiceUsername'],
+                  'password': event['ResourceProperties']['BookingServicePassword'],
+                  'database': event['ResourceProperties']['BookingServiceDatabaseName']
+                },
+                {
+                  'name': 'PaymentService',
+                  'username': event['ResourceProperties']['PaymentServiceUsername'],
+                  'password': event['ResourceProperties']['PaymentServicePassword'],
+                  'database': event['ResourceProperties']['PaymentServiceDatabaseName']
+                },
+                {
+                  'name': 'NotificationService',
+                  'username': event['ResourceProperties']['NotificationServiceUsername'],
+                  'password': event['ResourceProperties']['NotificationServicePassword'],
+                  'database': event['ResourceProperties']['NotificationServiceDatabaseName']
+                },
+                {
+                  'name': 'TrackingService',
+                  'username': event['ResourceProperties']['TrackingServiceUsername'],
+                  'password': event['ResourceProperties']['TrackingServicePassword'],
+                  'database': event['ResourceProperties']['TrackingServiceDatabaseName']
+                }
+              ]
+              
+              for service in services:
+                # Create database
+                cursor.execute(f"CREATE DATABASE {service['database']}")
+                
+                # Create user
+                cursor.execute(f"CREATE USER {service['username']} WITH ENCRYPTED PASSWORD %s", (service['password'],))
+                
+                # Grant privileges
+                cursor.execute(f"GRANT ALL PRIVILEGES ON DATABASE {service['database']} TO {service['username']}")
+                
+                response_data[f"{service['name']}DatabaseCreated"] = "Success"
+              
+              cursor.close()
+              conn.close()
+              
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+            except Exception as e:
+              print(f"Error: {str(e)}")
+              response_data['Error'] = str(e)
+              cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+  
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: RDSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                Resource: '*'
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/database/*"
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, 'prod']
+
+Outputs:
+  DatabaseEndpoint:
+    Description: Endpoint of the RDS instance
+    Value: !GetAtt PostgreSQLInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${Environment}-DatabaseEndpoint"
+  
+  DatabasePort:
+    Description: Port of the RDS instance
+    Value: !GetAtt PostgreSQLInstance.Endpoint.Port
+    Export:
+      Name: !Sub "${Environment}-DatabasePort"
+  
+  # User Service Database outputs
+  UserServiceDatabaseName:
+    Description: Database name for User Service
+    Value: user_service
+    Export:
+      Name: !Sub "${Environment}-UserServiceDatabaseName"
+  
+  UserServiceDatabaseUsername:
+    Description: Database username for User Service
+    Value: user_svc
+    Export:
+      Name: !Sub "${Environment}-UserServiceDatabaseUsername"
+  
+  UserServiceDatabasePassword:
+    Description: Database password for User Service
+    Value: !Sub "{{resolve:secretsmanager:${UserServiceDatabaseSecret}:SecretString:password}}"
+    Export:
+      Name: !Sub "${Environment}-UserServiceDatabasePassword"
+  
+  # Booking Service Database outputs
+  BookingServiceDatabaseName:
+    Description: Database name for Booking Service
+    Value: booking_service
+    Export:
+      Name: !Sub "${Environment}-BookingServiceDatabaseName"
+  
+  BookingServiceDatabaseUsername:
+    Description: Database username for Booking Service
+    Value: booking_svc
+    Export:
+      Name: !Sub "${Environment}-BookingServiceDatabaseUsername"
+  
+  BookingServiceDatabasePassword:
+    Description: Database password for Booking Service
+    Value: !Sub "{{resolve:secretsmanager:${BookingServiceDatabaseSecret}:SecretString:password}}"
+    Export:
+      Name: !Sub "${Environment}-BookingServiceDatabasePassword"
+  
+  # Payment Service Database outputs
+  PaymentServiceDatabaseName:
+    Description: Database name for Payment Service
+    Value: payment_service
+    Export:
+      Name: !Sub "${Environment}-PaymentServiceDatabaseName"
+  
+  PaymentServiceDatabaseUsername:
+    Description: Database username for Payment Service
+    Value: payment_svc
+    Export:
+      Name: !Sub "${Environment}-PaymentServiceDatabaseUsername"
+  
+  PaymentServiceDatabasePassword:
+    Description: Database password for Payment Service
+    Value: !Sub "{{resolve:secretsmanager:${PaymentServiceDatabaseSecret}:SecretString:password}}"
+    Export:
+      Name: !Sub "${Environment}-PaymentServiceDatabasePassword"
+  
+  # Notification Service Database outputs
+  NotificationServiceDatabaseName:
+    Description: Database name for Notification Service
+    Value: notification_service
+    Export:
+      Name: !Sub "${Environment}-NotificationServiceDatabaseName"
+  
+  NotificationServiceDatabaseUsername:
+    Description: Database username for Notification Service
+    Value: notification_svc
+    Export:
+      Name: !Sub "${Environment}-NotificationServiceDatabaseUsername"
+  
+  NotificationServiceDatabasePassword:
+    Description: Database password for Notification Service
+    Value: !Sub "{{resolve:secretsmanager:${NotificationServiceDatabaseSecret}:SecretString:password}}"
+    Export:
+      Name: !Sub "${Environment}-NotificationServiceDatabasePassword"
+  
+  # Tracking Service Database outputs
+  TrackingServiceDatabaseName:
+    Description: Database name for Tracking Service
+    Value: tracking_service
+    Export:
+      Name: !Sub "${Environment}-TrackingServiceDatabaseName"
+  
+  TrackingServiceDatabaseUsername:
+    Description: Database username for Tracking Service
+    Value: tracking_svc
+    Export:
+      Name: !Sub "${Environment}-TrackingServiceDatabaseUsername"
+  
+  TrackingServiceDatabasePassword:
+    Description: Database password for Tracking Service
+    Value: !Sub "{{resolve:secretsmanager:${TrackingServiceDatabaseSecret}:SecretString:password}}"
+    Export:
+      Name: !Sub "${Environment}-TrackingServiceDatabasePassword"
