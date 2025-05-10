@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NebengJek Redis Stack'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: The deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+  
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+  
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+  
+  RedisNodeType:
+    Type: String
+    Default: cache.t3.micro
+    Description: The Redis instance type
+    AllowedValues:
+      - cache.t3.micro
+      - cache.t3.small
+      - cache.t3.medium
+      - cache.m5.large
+      - cache.r5.large
+
+Resources:
+  # Security Group for Redis
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Redis
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !ImportValue ApiGatewaySecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !ImportValue UserServiceSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-redis-sg"
+  
+  # Redis Subnet Group
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Redis subnet group for NebengJek
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-redis-subnet-group"
+  
+  # Redis Cluster
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: !Ref RedisNodeType
+      Engine: redis
+      EngineVersion: 6.x
+      NumCacheNodes: 1
+      CacheParameterGroupName: default.redis6.x
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-nebengjek-redis"
+
+Outputs:
+  RedisEndpoint:
+    Description: Endpoint of the Redis cluster
+    Value: !Sub "${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}"
+    Export:
+      Name: !Sub "${Environment}-RedisEndpoint"
+  
+  RedisHost:
+    Description: Host of the Redis cluster
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub "${Environment}-RedisHost"
+  
+  RedisPort:
+    Description: Port of the Redis cluster
+    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+    Export:
+      Name: !Sub "${Environment}-RedisPort"

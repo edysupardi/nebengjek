@@ -1,0 +1,213 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/api-gateway.dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - USER_SERVICE_HOST=user-service
+      - USER_SERVICE_PORT=3001
+      - BOOKING_SERVICE_HOST=booking-service
+      - BOOKING_SERVICE_PORT=3002
+      - MATCHING_SERVICE_HOST=matching-service
+      - MATCHING_SERVICE_PORT=3003
+      - PAYMENT_SERVICE_HOST=payment-service
+      - PAYMENT_SERVICE_PORT=3004
+      - NOTIFICATION_SERVICE_HOST=notification-service
+      - NOTIFICATION_SERVICE_PORT=3005
+      - TRACKING_SERVICE_HOST=tracking-service
+      - TRACKING_SERVICE_PORT=3006
+    depends_on:
+      - user-service
+      - booking-service
+      - matching-service
+      - payment-service
+      - notification-service
+      - tracking-service
+      - redis
+    volumes:
+      - ./apps/api-gateway:/app/apps/api-gateway
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+
+  # User Service
+  user-service:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/user-service.dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/user_service?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_ACCESS_SECRET=dev_access_secret
+      - JWT_REFRESH_SECRET=dev_refresh_secret
+      - JWT_ACCESS_EXPIRES_IN=15m
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - USER_SERVICE_PORT=3001
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./apps/user-service:/app/apps/user-service
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+
+  # Booking Service
+  booking-service:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/booking-service.dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/booking_service?schema=public
+      - BOOKING_SERVICE_PORT=3002
+    depends_on:
+      - postgres
+    volumes:
+      - ./apps/booking-service:/app/apps/booking-service
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+
+  # Matching Service
+  matching-service:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/matching-service.dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MATCHING_SERVICE_PORT=3003
+    depends_on:
+      - redis
+    volumes:
+      - ./apps/matching-service:/app/apps/matching-service
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/payment-service.dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/payment_service?schema=public
+      - PAYMENT_SERVICE_PORT=3004
+    depends_on:
+      - postgres
+    volumes:
+      - ./apps/payment-service:/app/apps/payment-service
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+
+  # Notification Service
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/notification-service.dockerfile
+    ports:
+      - "3005:3005"
+      - "3050:3050" # WebSocket port
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/notification_service?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - NOTIFICATION_SERVICE_PORT=3005
+      - NOTIFICATION_WS_PORT=3050
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./apps/notification-service:/app/apps/notification-service
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+  # Tracking Service
+  tracking-service:
+    build:
+      context: .
+      dockerfile: ./deployment/docker/tracking-service.dockerfile
+    ports:
+      - "3006:3006"
+      - "3060:3060" # WebSocket port
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tracking_service?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TRACKING_SERVICE_PORT=3006
+      - TRACKING_WS_PORT=3060
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./apps/tracking-service:/app/apps/tracking-service
+      - ./libs:/app/libs
+    networks:
+      - nebengjek-network
+
+  # PostgreSQL
+  postgres:
+    image: postgres:13
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_MULTIPLE_DATABASES=user_service,booking_service,payment_service,notification_service,tracking_service
+    volumes:
+      - ./deployment/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - nebengjek-network
+
+  # Redis
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - nebengjek-network
+
+  # Adminer for database management (optional)
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - nebengjek-network
+
+networks:
+  nebengjek-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
