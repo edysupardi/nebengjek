@@ -8,6 +8,8 @@ import { TripGateway } from '@app/trip/trip.gateway';
 import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { TripStatus } from '@app/common';
 import * as PriceConstant from '@app/common/constants/price.constant';
+import { MessagingService } from '@app/messaging';
+import { TripEvents } from '@app/messaging/events/event-types';
 
 @Injectable()
 export class TripService {
@@ -19,7 +21,8 @@ export class TripService {
     private readonly tripRepository: TripRepository,
   private readonly locationService: LocationService,
   private readonly tripGateway: TripGateway, // Add this
-  @Inject('REDIS_CLIENT') private readonly redis: any
+  @Inject('REDIS_CLIENT') private readonly redis: any,
+  private readonly messagingService: MessagingService
   ) {}
 
   async startTrip(driverId: string, startTripDto: StartTripDto) {
@@ -53,6 +56,24 @@ export class TripService {
         'EX',
         86400 // 24 hours expiry
       );      
+  
+      // Get booking details to get customer ID
+      const booking = trip.booking;
+      const customerId = booking?.customerId;
+
+      if (customerId) {
+        // Publish trip started event
+        await this.messagingService.publish(TripEvents.STARTED, {
+          tripId: trip.id,
+          bookingId: startTripDto.bookingId,
+          driverId,
+          customerId,
+          pickupLocation: {
+            latitude: booking.pickupLat,
+            longitude: booking.pickupLng
+          }
+        });
+      }
   
       this.logger.log(`Trip started: ${trip.id}`);
       return trip;
@@ -99,6 +120,7 @@ export class TripService {
       };
 
       trip.locations.push(newLocation);
+      trip.lastUpdateTime = new Date().toISOString();
 
       // Calculate distance from last location if exists
       if (trip.locations.length > 1) {
@@ -131,13 +153,31 @@ export class TripService {
         updateLocationDto.longitude
       );
 
-      // Send real-time update via WebSocket - ADD THIS
+      // Send real-time update via WebSocket
       this.tripGateway.sendLocationUpdate(tripId, {
         latitude: updateLocationDto.latitude,
         longitude: updateLocationDto.longitude,
         totalDistance: trip.totalDistance,
         timestamp: new Date().toISOString(),
       });
+
+      // Get booking data to access customerId
+      const tripRecord = await this.tripRepository.findById(tripId);
+      if (tripRecord && tripRecord.booking) {
+        // Publish trip location update via messaging
+        await this.messagingService.publish(TripEvents.UPDATED, {
+          tripId,
+          bookingId: tripRecord.booking.id,
+          driverId: userId,
+          customerId: tripRecord.booking.customerId,
+          driverLatitude: updateLocationDto.latitude,
+          driverLongitude: updateLocationDto.longitude,
+          // Calculate estimated arrival time if possible
+          // estimatedArrivalTime: calculateETA(trip),
+          // Calculate distance to destination if possible
+          // distanceToDestination: calculateDistanceToDestination(trip)
+        });
+      }
 
       return {
         tripId,
@@ -185,11 +225,26 @@ export class TripService {
       // Clean up Redis
       await this.redis.del(`trip:${tripId}`);
   
+      // Send trip status update via WebSocket
       this.tripGateway.sendTripStatusUpdate(tripId, {
         status: 'COMPLETED',
         finalPrice: finalPrice,
         totalDistance: trip.totalDistance,
       });
+
+      // Get the booking information to access customerId
+      const tripRecord = await this.tripRepository.findById(tripId);
+      if (tripRecord && tripRecord.booking) {
+        // Publish trip ended event via messaging
+        await this.messagingService.publish(TripEvents.ENDED, {
+          tripId,
+          bookingId: tripRecord.booking.id,
+          driverId,
+          customerId: tripRecord.booking.customerId,
+          distance: trip.totalDistance,
+          fare: finalPrice
+        });
+      }
   
       this.logger.log(`Trip ended: ${tripId}, Total distance: ${trip.totalDistance}km, Final price: ${finalPrice}`);
   

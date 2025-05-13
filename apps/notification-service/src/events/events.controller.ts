@@ -1,36 +1,119 @@
 // src/events/events.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
-import { NotificationService } from '@app/notification/notification.service';
-import { BookingNotificationDto } from '@app/notification/dto/booking-notification.dto';
-import { DriverNotificationDto } from '@app/notification/dto/driver-notification.dto';
-import { CustomerNotificationDto } from '@app/notification/dto/customer-notification.dto';
-import { TripNotificationDto } from '@app/notification/dto/trip-notification.dto';
+import { Controller, Logger } from '@nestjs/common';
+import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
+import { NotificationService } from '../notification.service';
+import { BookingNotificationDto } from '../dto/booking-notification.dto';
+import { TripNotificationDto } from '../dto/trip-notification.dto';
+import { CustomerNotificationDto } from '../dto/customer-notification.dto';
+import { DriverNotificationDto } from '../dto/driver-notification.dto';
+import { MessagingService } from '@app/messaging';
+import { BookingEvents, TripEvents, PaymentEvents } from '@app/messaging/events/event-types';
 
 @Controller('events')
 export class EventsController {
-  constructor(private readonly notificationService: NotificationService) {}
+  private readonly logger = new Logger(EventsController.name);
 
-  @Post('booking')
-  async bookingEvent(@Body() dto: BookingNotificationDto) {
-    await this.notificationService.notifyBookingEvent(dto);
-    return { success: true };
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly messagingService: MessagingService,
+  ) {}
+
+  // Legacy event patterns for backward compatibility
+  @EventPattern('booking.new')
+  async handleNewBooking(@Payload() data: any) {
+    this.logger.log(`Received legacy booking.new event: ${JSON.stringify(data)}`);
+    // Forward to the new messaging system
+    await this.messagingService.publish(BookingEvents.CREATED, {
+      bookingId: data.bookingId,
+      customerId: data.customerId,
+      latitude: data.latitude || data.pickupLatitude,
+      longitude: data.longitude || data.pickupLongitude,
+      destinationLatitude: data.destinationLatitude,
+      destinationLongitude: data.destinationLongitude,
+      customerName: data.customerName,
+    });
   }
 
-  @Post('driver')
-  async driverEvent(@Body() dto: DriverNotificationDto) {
-    await this.notificationService.notifyDrivers(dto);
-    return { success: true };
+  @EventPattern('booking.accepted')
+  async handleBookingAccepted(@Payload() data: any) {
+    this.logger.log(`Received legacy booking.accepted event: ${JSON.stringify(data)}`);
+    // Forward to the new messaging system
+    await this.messagingService.publish(BookingEvents.ACCEPTED, {
+      bookingId: data.bookingId,
+      customerId: data.customerId,
+      driverId: data.driverId,
+      driverName: data.driverName,
+      driverLatitude: data.driverLatitude,
+      driverLongitude: data.driverLongitude,
+      estimatedArrivalTime: data.estimatedArrivalTime,
+    });
   }
 
-  @Post('customer')
-  async customerEvent(@Body() dto: CustomerNotificationDto) {
-    await this.notificationService.notifyCustomer(dto);
-    return { success: true };
+  @EventPattern('booking.cancelled')
+  async handleBookingCancelled(@Payload() data: any) {
+    this.logger.log(`Received legacy booking.cancelled event: ${JSON.stringify(data)}`);
+    // Forward to the new messaging system
+    await this.messagingService.publish(BookingEvents.CANCELLED, {
+      bookingId: data.bookingId,
+      customerId: data.customerId,
+      driverId: data.driverId,
+      cancelledBy: data.cancelledBy || 'system',
+    });
   }
 
-  @Post('trip')
-  async tripEvent(@Body() dto: TripNotificationDto) {
-    await this.notificationService.notifyTripEvent(dto);
-    return { success: true };
+  @EventPattern('trip.started')
+  async handleTripStarted(@Payload() data: any) {
+    this.logger.log(`Received legacy trip.started event: ${JSON.stringify(data)}`);
+    // Forward to the new messaging system
+    await this.messagingService.publish(TripEvents.STARTED, {
+      tripId: data.tripId || `trip-${data.bookingId}`, // Generate temp ID if not provided
+      bookingId: data.bookingId,
+      driverId: data.driverId,
+      customerId: data.customerId,
+      pickupLocation: {
+        latitude: data.pickupLocation?.latitude || 0,
+        longitude: data.pickupLocation?.longitude || 0,
+      },
+    });
+  }
+
+  @EventPattern('payment.completed')
+  async handlePaymentCompleted(@Payload() data: any) {
+    this.logger.log(`Received legacy payment.completed event: ${JSON.stringify(data)}`);
+    // Forward to the new messaging system
+    await this.messagingService.publish(PaymentEvents.COMPLETED, {
+      tripId: data.tripId,
+      bookingId: data.bookingId || '',
+      customerId: data.customerId,
+      driverId: data.driverId,
+      amount: data.amount,
+      driverAmount: data.driverAmount,
+      platformFee: data.amount - data.driverAmount,
+    });
+  }
+
+  // Direct API methods for notification
+  @MessagePattern('notify.booking')
+  async notifyBookingEvent(@Payload() data: BookingNotificationDto) {
+    this.logger.log(`Processing notify.booking message: ${JSON.stringify(data)}`);
+    return this.notificationService.notifyBookingEvent(data);
+  }
+
+  @MessagePattern('notify.driver')
+  async notifyDriver(@Payload() data: DriverNotificationDto) {
+    this.logger.log(`Processing notify.driver message: ${JSON.stringify(data)}`);
+    return this.notificationService.notifyDrivers(data);
+  }
+
+  @MessagePattern('notify.customer')
+  async notifyCustomer(@Payload() data: CustomerNotificationDto) {
+    this.logger.log(`Processing notify.customer message: ${JSON.stringify(data)}`);
+    return this.notificationService.notifyCustomer(data);
+  }
+
+  @MessagePattern('notify.trip')
+  async notifyTripEvent(@Payload() data: TripNotificationDto) {
+    this.logger.log(`Processing notify.trip message: ${JSON.stringify(data)}`);
+    return this.notificationService.notifyTripEvent(data);
   }
 }

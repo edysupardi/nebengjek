@@ -7,6 +7,8 @@ import { firstValueFrom } from 'rxjs';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { BookingNotification, NearbyDriver } from '@app/common';
 import * as PriceConstant from '@app/common/constants/price.constant';
+import { MessagingService } from '@app/messaging';
+import { BookingEvents } from '@app/messaging/events/event-types';
 
 @Injectable()
 export class BookingService {
@@ -17,7 +19,8 @@ export class BookingService {
     private readonly httpService: HttpService,
     @Inject('TRACKING_SERVICE') private trackingServiceClient: ClientProxy,
     @Inject('NOTIFICATION_SERVICE') private notificationServiceClient: ClientProxy,
-    @Inject('REDIS_CLIENT') private redis: any
+    @Inject('REDIS_CLIENT') private redis: any,
+    private readonly messagingService: MessagingService
   ) {}
 
   async createBooking(userId: string, createBookingDto: CreateBookingDto) {
@@ -62,8 +65,19 @@ export class BookingService {
           3600 // 1 hour expiry
         );
       });
+
+      // Publish booking.created event through messaging service
+      await this.messagingService.publish(BookingEvents.CREATED, {
+        bookingId: booking.id,
+        customerId: userId,
+        latitude: createBookingDto.pickupLatitude,
+        longitude: createBookingDto.pickupLongitude,
+        destinationLatitude: createBookingDto.destinationLatitude,
+        destinationLongitude: createBookingDto.destinationLongitude,
+        customerName: booking.customer ? booking.customer.name : 'Customer',
+      });
   
-      // Find nearby drivers with retry
+      // Find nearby drivers with retry - keep this for legacy compatibility
       try {
         const nearbyDriversResponse = await this.executeWithRetry(async () => {
           return await firstValueFrom(
@@ -75,7 +89,7 @@ export class BookingService {
           );
         });
         
-        // Send notifications to nearby drivers
+        // Send notifications to nearby drivers through legacy service
         if (nearbyDriversResponse && nearbyDriversResponse.drivers && nearbyDriversResponse.drivers.length > 0) {
           nearbyDriversResponse.drivers.forEach((driver: NearbyDriver) => {
             this.notificationServiceClient.emit('booking.new', {
@@ -190,8 +204,19 @@ export class BookingService {
         driverId,
         acceptedAt: new Date() // Timestamp when booking was accepted
       });
+
+      // Publish to messaging service
+      await this.messagingService.publish(BookingEvents.ACCEPTED, {
+        bookingId,
+        customerId: booking.customerId,
+        driverId,
+        driverName: updatedBooking.driver?.name || 'Driver',
+        driverLatitude: updatedBooking.driver?.driverProfile?.lastLatitude || 0,
+        driverLongitude: updatedBooking.driver?.driverProfile?.lastLongitude || 0,
+        estimatedArrivalTime: 0 // Calculate ETA if possible
+      });
   
-      // Notify customer that booking is accepted
+      // Keep legacy notification for backward compatibility
       this.notificationServiceClient.emit('booking.accepted', {
         bookingId,
         customerId: booking.customerId,
@@ -265,8 +290,19 @@ export class BookingService {
         status: BookingStatus.CANCELLED,
         cancelledAt: new Date() // Timestamp when booking was cancelled
       });
+
+      // Determine who cancelled the booking
+      const cancelledBy = userId === booking.customerId ? 'customer' : 'driver';
   
-      // Notify relevant parties
+      // Publish to messaging service
+      await this.messagingService.publish(BookingEvents.CANCELLED, {
+        bookingId,
+        customerId: booking.customerId,
+        driverId: booking.driverId ?? undefined,
+        cancelledBy
+      });
+  
+      // Keep legacy notifications for backward compatibility
       if (userId === booking.customerId) {
         // Customer cancelled, notify driver if assigned
         if (booking.driverId) {

@@ -8,6 +8,7 @@ import { NotificationRepository } from '@app/notification/repositories/notificat
 import { NotificationGateway } from '@app/notification/websocket/notification.gateway';
 import { EventsController } from '@app/notification/events/events.controller';
 import { HealthModule } from '@app/common';
+import { MessagingModule } from '@app/messaging';
 
 @Module({
   imports: [
@@ -15,6 +16,25 @@ import { HealthModule } from '@app/common';
       isGlobal: true,
     }),
     DatabaseModule,
+    MessagingModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        serviceName: 'notification-service',
+        // Auto-subscribe to these channels on startup
+        channels: [
+          'booking.created',
+          'booking.updated',
+          'booking.accepted',
+          'booking.rejected',
+          'booking.cancelled',
+          'trip.started',
+          'trip.updated',
+          'trip.ended',
+          'payment.completed'
+        ],
+      }),
+      inject: [ConfigService],
+    }),
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

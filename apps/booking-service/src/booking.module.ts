@@ -8,6 +8,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { HttpModule } from '@nestjs/axios';
 import { LoggingModule } from '@app/common/modules/logging.module';
 import { HealthModule } from '@app/common';
+import { MessagingModule } from '@app/messaging';
 
 /**
  * @module BookingModule
@@ -20,6 +21,13 @@ import { HealthModule } from '@app/common';
       envFilePath: '.env',
     }),
     LoggingModule,
+    MessagingModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        serviceName: 'booking-service',
+      }),
+      inject: [ConfigService],
+    }),
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
