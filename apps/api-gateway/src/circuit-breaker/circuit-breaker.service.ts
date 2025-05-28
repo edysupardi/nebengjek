@@ -1,26 +1,34 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import * as CircuitBreaker from 'opossum';
+import { ConfigService } from '@nestjs/config';
+const CircuitBreaker = require('opossum');
 
 @Injectable()
 export class CircuitBreakerService {
   private readonly logger = new Logger(CircuitBreakerService.name);
   private readonly breakers = new Map<string, any>();
   
+  constructor(private configService: ConfigService) {}
+
   getBreaker(serviceKey: string) {
     if (!this.breakers.has(serviceKey)) {
+      // Read configuration from environment or use defaults
+      const timeout = this.configService.get<number>('CIRCUIT_BREAKER_TIMEOUT', 10000);
+      const resetTimeout = this.configService.get<number>('CIRCUIT_BREAKER_RESET_TIMEOUT', 30000);
+      const errorThresholdPercentage = this.configService.get<number>('CIRCUIT_BREAKER_ERROR_THRESHOLD', 50);
+      
       // Create new circuit breaker for this service
       const breaker = new CircuitBreaker(
         async (fn: Function) => fn(),
         {
-          timeout: 10000, // 10 seconds
-          errorThresholdPercentage: 50, // Open after 50% of requests fail
-          resetTimeout: 30000, // Try again after 30 seconds
+          timeout: timeout, // 10 seconds by default
+          errorThresholdPercentage: errorThresholdPercentage, // Open after 50% of requests fail
+          resetTimeout: resetTimeout, // Try again after 30 seconds
           rollingCountTimeout: 60000, // 1 minute window
           rollingCountBuckets: 10, // 10 buckets of 6 seconds each
         }
       );
       
-      // Add listeners for events
+      // Add listeners for circuit breaker events
       breaker.on('open', () => {
         this.logger.warn(`Circuit breaker for ${serviceKey} is now OPEN`);
       });
@@ -49,20 +57,26 @@ export class CircuitBreakerService {
     try {
       return await breaker.fire(fn);
     } catch (error) {
-      // Log detailed error for operations 
+      // Log detailed error
+      const err = error as Error;
+    
       this.logger.error(
-        `Service ${serviceKey} failed: ${error.message}`,
-        error.stack
+        `Service ${serviceKey} failed: ${err.message}`,
+        err.stack
       );
       
-      // Provide fallback response or throw appropriate error
+      // Throw appropriate exception
+      throw new ServiceUnavailableException(
+        `Service ${serviceKey.split('//')[1]} is currently unavailable. Please try again later.`
+      );
+      
+      // Throw appropriate exception
       throw new ServiceUnavailableException(
         `Service ${serviceKey.split('//')[1]} is currently unavailable. Please try again later.`
       );
     }
   }
   
-  // Method to provide fallback for critical services
   async callWithFallback(
     serviceKey: string, 
     fn: Function, 

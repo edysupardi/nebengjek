@@ -1,13 +1,13 @@
 import { Controller, Post, Get, Put, Param, Body, UseGuards } from '@nestjs/common';
 import { TripService } from '@app/trip/trip.service';
-import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { StartTripDto } from '@app/trip/dto/start-trip.dto';
 import { EndTripDto } from '@app/trip/dto/end-trip.dto';
 import { UpdateTripLocationDto } from '@app/trip/dto/update-trip-location.dto';
 
 @Controller('trips')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 export class TripController {
   constructor(private readonly tripService: TripService) {}
 

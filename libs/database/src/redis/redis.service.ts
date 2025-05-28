@@ -1,22 +1,20 @@
 // libs/database/src/redis/redis.service.ts
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
 import Redis from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
-  private client: Redis;
   private publisher: Redis;
   private subscriber: Redis;
 
-  constructor() {
-    // Konfigurasi Redis
+  constructor(@Inject('REDIS_CLIENT') private readonly client: Redis) {
+    // Konfigurasi Redis untuk publisher dan subscriber
     const redisConfig = {
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379'),
       password: process.env.REDIS_PASSWORD || undefined,
     };
 
-    this.client = new Redis(redisConfig);
     this.publisher = new Redis(redisConfig);
     this.subscriber = new Redis(redisConfig);
   }
@@ -32,9 +30,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.client.quit();
     await this.publisher.quit();
     await this.subscriber.quit();
+    // Client akan ditutup oleh modul
   }
 
   // Operasi dasar Redis

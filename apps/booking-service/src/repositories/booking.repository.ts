@@ -1,39 +1,52 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/database';
-import { Booking } from '@prisma/client';
+import { Booking, User, DriverProfile } from '@prisma/client';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
+
+type BookingWithRelations = Booking & {
+  customer: User | null;
+  driver: (User & {
+    driverProfile: DriverProfile | null;
+  }) | null;
+};
 
 @Injectable()
 export class BookingRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: Partial<Booking>): Promise<Booking> {
-    return this.prisma.booking.create({
+  async create(data: Partial<Booking>): Promise<BookingWithRelations> {
+    const prismaBooking = await this.prisma.booking.create({
       data: data as any,
       include: {
         customer: true,
         driver: true,
-      },
+      }
     });
+    
+    return prismaBooking as BookingWithRelations;
   }
 
   async findById(id: string): Promise<Booking | null> {
     return this.prisma.booking.findUnique({
       where: { id },
       include: {
-        customer: true,
+        customer: true,  // This will include all customer fields
         driver: true,
       },
     });
   }
 
-  async update(id: string, data: Partial<Booking>): Promise<Booking> {
+  async update(id: string, data: Partial<Booking>): Promise<BookingWithRelations> {
     return this.prisma.booking.update({
       where: { id },
       data,
       include: {
         customer: true,
-        driver: true,
+        driver: {
+          include: {
+            driverProfile: true,
+          },
+        },
       },
     });
   }

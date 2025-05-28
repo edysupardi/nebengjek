@@ -33,6 +33,9 @@
 
       "@app/notification":                ["apps/notification-service/src"],
       "@app/notification/*":              ["apps/notification-service/src/*"],
+
+      "@app/apigateway":                  ["apps/api-gateway/src"],
+      "@app/apigateway/*":                ["apps/api-gateway/src/*"],
     }
   },
   "include": ["apps/**/*", "libs/**/*"],

@@ -1,11 +1,11 @@
 // src/notification.controller.ts
 import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { NotificationService } from '@app/notification/notification.service';
-import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 

@@ -1,73 +1,48 @@
 // src/notification.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { NotificationRepository } from './repositories/notification.repository';
 import { NotificationGateway } from './websocket/notification.gateway';
-import { RedisService } from '@app/database/redis/redis.service';
 import { BookingNotificationDto } from './dto/booking-notification.dto';
 import { DriverNotificationDto } from './dto/driver-notification.dto';
 import { CustomerNotificationDto } from './dto/customer-notification.dto';
 import { TripNotificationDto } from './dto/trip-notification.dto';
 import { CustomerNotificationType, DriverNotificationType, TripStatus } from '@app/common';
+import { MessagingService } from '@app/messaging';
+import { 
+  BookingEvents, 
+  TripEvents, 
+  PaymentEvents,
+  EventPayloadMap 
+} from '@app/messaging/events/event-types';
 
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnModuleInit {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(
     private readonly notificationRepository: NotificationRepository,
     private readonly notificationGateway: NotificationGateway,
-    private readonly redisService: RedisService,
-  ) {
-    this.subscribeToRedisChannels();
+    private readonly messagingService: MessagingService,
+  ) {}
+
+  onModuleInit() {
+    this.subscribeToEvents();
   }
 
-  private subscribeToRedisChannels() {
-    // Subscribe to relevant Redis channels for inter-service communication
-    const redisClient = this.redisService.getClient();
+  private subscribeToEvents() {
+    // Subscribe to booking events
+    this.messagingService.subscribe(BookingEvents.CREATED, (data) => this.handleBookingCreated(data));
+    this.messagingService.subscribe(BookingEvents.UPDATED, (data) => this.handleBookingUpdated(data));
     
-    redisClient.subscribe('booking:created');
-    redisClient.subscribe('booking:updated');
-    redisClient.subscribe('trip:started');
-    redisClient.subscribe('trip:updated');
-    redisClient.subscribe('trip:ended');
-    redisClient.subscribe('payment:completed');
+    // Subscribe to trip events
+    this.messagingService.subscribe(TripEvents.STARTED, (data) => this.handleTripStarted(data));
+    this.messagingService.subscribe(TripEvents.UPDATED, (data) => this.handleTripUpdated(data));
+    this.messagingService.subscribe(TripEvents.ENDED, (data) => this.handleTripEnded(data));
     
-    redisClient.on('message', (channel, message) => {
-      this.logger.log(`Received message from channel ${channel}`);
-      this.handleRedisMessage(channel, message);
-    });
-  }
+    // Subscribe to payment events
+    this.messagingService.subscribe(PaymentEvents.COMPLETED, (data) => this.handlePaymentCompleted(data));
 
-  private handleRedisMessage(channel: string, message: string) {
-    try {
-      const data = JSON.parse(message);
-      
-      switch (channel) {
-        case 'booking:created':
-          this.handleBookingCreated(data);
-          break;
-        case 'booking:updated':
-          this.handleBookingUpdated(data);
-          break;
-        case 'trip:started':
-          this.handleTripStarted(data);
-          break;
-        case 'trip:updated':
-          this.handleTripUpdated(data);
-          break;
-        case 'trip:ended':
-          this.handleTripEnded(data);
-          break;
-        case 'payment:completed':
-          this.handlePaymentCompleted(data);
-          break;
-        default:
-          this.logger.warn(`Unhandled channel: ${channel}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error handling message from channel ${channel}: ${errorMessage}`);
-    }
+    this.logger.log('Subscribed to messaging events');
   }
 
   // Direct API methods for notification sending
@@ -209,7 +184,7 @@ export class NotificationService {
   }
 
   // Event handlers
-  private async handleBookingCreated(data: any) {
+  private async handleBookingCreated(data: EventPayloadMap[BookingEvents.CREATED]) {
     // Notify nearby drivers about new booking
     // In a real app, this would use geospatial queries
     if (data.latitude && data.longitude) {
@@ -240,7 +215,7 @@ export class NotificationService {
     });
   }
 
-  private async handleBookingUpdated(data: any) {
+  private async handleBookingUpdated(data: EventPayloadMap[BookingEvents.UPDATED]) {
     if (data.status === 'ACCEPTED' && data.driverId) {
       // Notify customer that a driver accepted
       await this.notifyCustomer({
@@ -261,10 +236,8 @@ export class NotificationService {
         type: DriverNotificationType.BOOKING_ACCEPTED,
         bookingId: data.bookingId,
         customerId: data.customerId,
-        customerName: data.customerName,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        message: `You've accepted a booking from ${data.customerName}. Head to the pickup location.`,
+        customerName: data.customerId, // This should be the customer's name, but using ID as fallback
+        message: `You've accepted a booking. Head to the pickup location.`,
       });
     } else if (data.status === 'REJECTED' || data.status === 'CANCELLED') {
       // Handle rejection/cancellation notifications
@@ -292,7 +265,7 @@ export class NotificationService {
     }
   }
 
-  private async handleTripStarted(data: any) {
+  private async handleTripStarted(data: EventPayloadMap[TripEvents.STARTED]) {
     await this.notifyTripEvent({
       tripId: data.tripId,
       bookingId: data.bookingId,
@@ -303,19 +276,19 @@ export class NotificationService {
     });
   }
 
-  private async handleTripUpdated(data: any) {
-    // Pastikan memiliki data yang diperlukan
+  private async handleTripUpdated(data: EventPayloadMap[TripEvents.UPDATED]) {
+    // Make sure we have the required data
     if (!data.tripId || !data.customerId || !data.driverId) {
       this.logger.warn('Incomplete data for trip update notification');
       return;
     }
 
-    // Jika ada pembaruan lokasi driver
+    // If driver location is updated
     if (data.driverLatitude !== undefined && data.driverLongitude !== undefined) {
-      // Tidak perlu menyimpan notifikasi lokasi di database untuk menghindari spam
-      // Cukup kirim melalui WebSocket
+      // No need to save location updates in database to avoid spam
+      // Just send via WebSocket
 
-      // Kirim pembaruan lokasi ke pelanggan
+      // Send update to customer
       this.notificationGateway.sendToCustomer(
         data.customerId,
         'driver_location_update',
@@ -325,20 +298,20 @@ export class NotificationService {
           driverLatitude: data.driverLatitude,
           driverLongitude: data.driverLongitude,
           timestamp: new Date(),
-          // Jika tersedia, tambahkan info perkiraan waktu kedatangan
+          // Add ETA if available
           estimatedArrivalTime: data.estimatedArrivalTime,
-          // Jika tersedia, tambahkan info jarak ke tujuan
+          // Add distance to destination if available
           distanceToDestination: data.distanceToDestination
         }
       );
 
-      // Opsional: Log pembaruan lokasi untuk debugging
+      // Optional: Log location update for debugging
       this.logger.debug(
         `Location update for trip ${data.tripId}: Driver at [${data.driverLatitude}, ${data.driverLongitude}]`
       );
     }
 
-    // Jika ada pembaruan status lain (misalnya driver menambahkan catatan, dll)
+    // If there are other status updates (e.g., driver added notes, etc.)
     if (data.statusMessage) {
       await this.notificationRepository.saveNotification({
         userId: data.customerId,
@@ -359,7 +332,7 @@ export class NotificationService {
       );
     }
 
-    // Jika ada pembaruan ETA (Estimated Time of Arrival)
+    // If ETA is updated
     if (data.updatedETA) {
       this.notificationGateway.sendToCustomer(
         data.customerId,
@@ -373,7 +346,7 @@ export class NotificationService {
     }
   }
 
-  private async handleTripEnded(data: any) {
+  private async handleTripEnded(data: EventPayloadMap[TripEvents.ENDED]) {
     await this.notifyTripEvent({
       tripId: data.tripId,
       bookingId: data.bookingId,
@@ -386,7 +359,7 @@ export class NotificationService {
     });
   }
 
-  private async handlePaymentCompleted(data: any) {
+  private async handlePaymentCompleted(data: EventPayloadMap[PaymentEvents.COMPLETED]) {
     await this.notifyCustomer({
       customerId: data.customerId,
       type: CustomerNotificationType.PAYMENT_COMPLETED,

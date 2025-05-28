@@ -4,10 +4,10 @@ import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
 import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.dto';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
-import { JwtAuthGuard } from '@app/common/guards/jwt-auth.guard';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 
 @Controller('bookings')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TrustedGatewayGuard)
 export class BookingController {
   private readonly logger = new Logger(BookingController.name);
   constructor(private readonly bookingService: BookingService) {}

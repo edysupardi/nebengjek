@@ -102,6 +102,8 @@ Entity yang dirancang:
 
     `npm run start:user`
 
+    `docker-compose up -d api-gateway user-service` contoh untuk menjalankan service user beserta api-gateway nya
+
 4. Cek dokumentasi API (Swagger) di:
 
     `localhost:3000/api` (API Gateway)
