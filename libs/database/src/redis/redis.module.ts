@@ -1,8 +1,7 @@
 // libs/database/src/redis/redis.module.ts
 import { DynamicModule, Module, Provider } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisService } from './redis.service';
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 
 @Module({})
 export class RedisModule {
@@ -48,7 +47,7 @@ export class RedisModule {
   }
 
   static register(options: {
-    connectionOptions: Redis.RedisOptions;
+    connectionOptions: RedisOptions;
   }): DynamicModule {
     const redisProvider: Provider = {
       provide: 'REDIS_CLIENT',
@@ -66,7 +65,7 @@ export class RedisModule {
 
   static registerAsync(options: {
     imports?: any[];
-    useFactory: (...args: any[]) => Redis.RedisOptions;
+    useFactory: (...args: any[]) => RedisOptions;
     inject?: any[];
   }): DynamicModule {
     const redisProvider: Provider = {

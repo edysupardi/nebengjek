@@ -7,6 +7,7 @@ import { PaymentResponseDto } from './dto/payment-response.dto';
 import { JwtAuthGuard, RolesGuard } from '@app/common/guards';
 import { Roles } from '@app/common/decorators';
 import { UserRole } from '@app/common/enums';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 
 @Controller('payments')
 @UseGuards(TrustedGatewayGuard)

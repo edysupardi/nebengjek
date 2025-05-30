@@ -12,7 +12,7 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
   
   constructor(
     private eventEmitter: EventEmitter2,
-    private redisService: RedisService,
+    @Inject('REDIS_CLIENT') private redisService: any,
     @Optional() @Inject('MESSAGING_OPTIONS') private options?: any
   ) {}
 
@@ -102,7 +102,7 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     if (!this.subscribedChannels.has(eventName)) {
       this.subscribedChannels.add(eventName);
       
-      this.redisService.subscribe(eventName, (message) => {
+      this.redisService.subscribe(eventName, (message: string) => {
         try {
           const data = JSON.parse(message);
           

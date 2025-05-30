@@ -10,7 +10,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ transform: true }));
   
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PAYMENT_SERVICE_PORT', 3004);
+  const port = configService.get<number>('PAYMENT_PORT', 3005);
   
   await app.listen(port);
   console.log(`Payment Service is running on port ${port}`);

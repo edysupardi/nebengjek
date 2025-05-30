@@ -7,7 +7,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisModule } from '@app/database/redis/redis.module';
 import { JwtStrategy } from '@app/common/strategies/jwt.strategy';
 import { JwtRefreshStrategy } from '@app/common/strategies/jwt-refresh.strategy';
-import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
+import { JwtAuthGuard } from '@app/common';
 
 @Module({
   imports: [

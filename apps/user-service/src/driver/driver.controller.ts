@@ -6,6 +6,7 @@ import { RegisterDriverDto } from '@app/driver/dto/register-driver.dto';
 import { UpdateDriverStatusDto } from '@app/driver/dto/update-driver-status.dto';
 import { UpdateLocationDto } from '@app/driver/dto/update-location.dto';
 import { JwtAuthGuard } from "@app/common/guards/jwt-auth.guard";
+import { TrustedGatewayGuard } from "@app/common/guards/trusted-gateway.guard";
 
 @Controller('driver')
 @UseGuards(TrustedGatewayGuard)

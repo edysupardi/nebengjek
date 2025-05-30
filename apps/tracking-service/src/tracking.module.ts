@@ -6,6 +6,7 @@ import { LoggingModule } from '@app/common/modules/logging.module';
 import { MaintenanceService } from '@app/tracking-maintenance/maintenance.service';
 import { HealthModule } from '@app/common/health/health.module';
 import { PrismaService } from '@app/database';
+import { MessagingModule } from '@app/messaging';
 
 @Module({
   imports: [
@@ -28,6 +29,14 @@ import { PrismaService } from '@app/database';
           prisma: new PrismaService(),
         };
       },
+      inject: [ConfigService],
+    }),
+    MessagingModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        serviceName: 'tracking-service', // Provide required config
+        // Add any other options needed
+      }),
       inject: [ConfigService],
     }),
   ],

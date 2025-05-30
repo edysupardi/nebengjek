@@ -11,7 +11,6 @@ export class MessagingModule {
       module: MessagingModule,
       imports: [
         EventEmitterModule.forRoot({
-          // Global event emitter configuration
           wildcard: true,
           delimiter: '.',
           newListener: false,
@@ -19,11 +18,19 @@ export class MessagingModule {
           maxListeners: 10,
           verboseMemoryLeak: true,
         }),
-        RedisModule,
+        RedisModule.forRoot(), // ✅ Change: Call forRoot() method
       ],
-      providers: [MessagingService],
+      providers: [
+        {
+          provide: 'MESSAGING_OPTIONS', // ✅ Add missing provider
+          useValue: {
+            serviceName: 'default',
+          },
+        },
+        MessagingService,
+      ],
       exports: [MessagingService],
-      global: true, // Make the module globally available
+      global: true,
     };
   }
 
@@ -49,7 +56,7 @@ export class MessagingModule {
           delimiter: '.',
           maxListeners: 10,
         }),
-        RedisModule,
+        RedisModule.forRoot(), // ✅ Change: Call forRoot() method
         ...(options.imports || []),
       ],
       providers,

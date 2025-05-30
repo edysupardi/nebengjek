@@ -27,7 +27,7 @@ async function bootstrap() {
   const excludedPaths = [''];
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
 
-  const port = process.env.USER_PORT || 3000;
+  const port = process.env.USER_PORT || 3001;
   console.log(`User service is running on port ${port}`);
   await app.listen(port);
 }

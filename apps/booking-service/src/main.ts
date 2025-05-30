@@ -30,7 +30,7 @@ async function bootstrap() {
   // Apply global response interceptor
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths));
 
-  const port = process.env.BOOKING_PORT || 3004;
+  const port = process.env.BOOKING_PORT || 3002;
   logger.log(`Booking service is running on port ${port}`);
   await app.listen(port);
 }
