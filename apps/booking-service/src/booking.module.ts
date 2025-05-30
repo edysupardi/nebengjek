@@ -68,6 +68,18 @@ import { MessagingModule } from '@app/messaging';
         }),
         inject: [ConfigService],
       },
+      {
+        name: 'MATCHING_SERVICE',
+        imports: [ConfigModule],
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.TCP,
+          options: {
+            host: configService.get('MATCHING_SERVICE_HOST', 'localhost'),
+            port: configService.get('MATCHING_PORT', 3004),
+          },
+        }),
+        inject: [ConfigService],
+      },
     ]),
   ],
   controllers: [BookingController],

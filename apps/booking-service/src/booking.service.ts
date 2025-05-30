@@ -19,6 +19,7 @@ export class BookingService {
     private readonly httpService: HttpService,
     @Inject('TRACKING_SERVICE') private trackingServiceClient: ClientProxy,
     @Inject('NOTIFICATION_SERVICE') private notificationServiceClient: ClientProxy,
+    @Inject('MATCHING_SERVICE') private matchingServiceClient: ClientProxy,
     @Inject('REDIS_CLIENT') private redis: any,
     private readonly messagingService: MessagingService
   ) {}
@@ -81,7 +82,7 @@ export class BookingService {
       try {
         const nearbyDriversResponse = await this.executeWithRetry(async () => {
           return await firstValueFrom(
-            this.trackingServiceClient.send('find.nearbyDrivers', {
+            this.matchingServiceClient.send('findDrivers', {
               latitude: createBookingDto.pickupLatitude,
               longitude: createBookingDto.pickupLongitude,
               radius: 1 // 1km radius
