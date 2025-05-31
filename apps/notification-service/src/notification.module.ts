@@ -9,6 +9,7 @@ import { NotificationGateway } from '@app/notification/websocket/notification.ga
 import { EventsController } from '@app/notification/events/events.controller';
 import { HealthModule } from '@app/common';
 import { MessagingModule } from '@app/messaging';
+import { LoggingModule } from '@app/common/modules/logging.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { MessagingModule } from '@app/messaging';
       isGlobal: true,
     }),
     DatabaseModule,
+    LoggingModule,
     MessagingModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

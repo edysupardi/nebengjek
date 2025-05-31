@@ -5,6 +5,7 @@ import { PaymentController } from '@app/payment/payment.controller';
 import { PaymentService } from '@app/payment/payment.service';
 import { TransactionRepository } from '@app/payment/repositories/transaction.repository';
 import { HealthModule } from '@app/common';
+import { LoggingModule } from '@app/common/modules/logging.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { HealthModule } from '@app/common';
       envFilePath: ['.env'],
     }),
     DatabaseModule,
+    LoggingModule,
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

@@ -1,27 +1,41 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
+import { ResponseInterceptor } from '@app/common/interceptors/response.interceptor';
+import { Logger } from 'nestjs-pino';
+import { MatchingModule } from './algorithm/matching.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(MatchingModule);
   
-  app.useGlobalPipes(new ValidationPipe({ transform: true }));
-  app.setGlobalPrefix('api');
-  
-  const config = new DocumentBuilder()
-    .setTitle('NebengJek Matching Service')
-    .setDescription('API untuk matching driver dan customer')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Enable validation
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    })
+  );
+
+  const logger = app.get(Logger);
+  app.useLogger(logger); // beauty logger for nestjs
+
+  // enable CORS for all routes
+  app.enableCors({ 
+    origin: true,
+    credentials: true,
+  });
+
+  app.use(helmet.hidePoweredBy()); // hide X-Powered-By header
+
+  const moduleRef = app.select(MatchingModule);
+  const reflector = moduleRef.get(Reflector);
+  const excludedPaths = [''];
+  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
   
   const port = process.env.MATCHING_PORT || 3006;
-  await app.listen(port);
   console.log(`Matching service running on port ${port}`);
+  await app.listen(port);
 }
 
 bootstrap();

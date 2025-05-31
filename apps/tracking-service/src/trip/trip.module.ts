@@ -3,10 +3,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TripController } from './trip.controller';
 import { TripService } from './trip.service';
 import { TripRepository } from './repositories/trip.repository';
-import { PrismaService } from '@app/database';
+import { PrismaService, RedisModule } from '@app/database';
 import { TripGateway } from './trip.gateway';
 import { LocationModule } from '../location/location.module';
 import { MessagingModule } from '@app/messaging';
+import { LoggingModule } from '@app/common/modules/logging.module';
 
 @Module({
   imports: [
@@ -19,6 +20,8 @@ import { MessagingModule } from '@app/messaging';
       }),
       inject: [ConfigService],
     }),
+    RedisModule.forRoot(),
+    LoggingModule,
   ],
   controllers: [TripController],
   providers: [
@@ -26,17 +29,6 @@ import { MessagingModule } from '@app/messaging';
     TripRepository,
     PrismaService,
     TripGateway,
-    {
-      provide: 'REDIS_CLIENT',
-      useFactory: (configService: ConfigService) => {
-        const Redis = require('ioredis');
-        return new Redis({
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get('REDIS_PORT', 6379),
-        });
-      },
-      inject: [ConfigService],
-    },
   ],
   exports: [TripService, TripRepository],
 })

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/database/prisma/prisma.service';
 import { RedisService } from '@app/database/redis/redis.service';
 import { FindMatchDto } from './dto/find-match.dto';
@@ -9,7 +9,7 @@ import { DistanceHelper } from './distance.helper';
 export class MatchingService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService
+    @Inject('REDIS_CLIENT') private redis: any,
   ) {}
 
   /**

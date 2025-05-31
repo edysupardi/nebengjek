@@ -12,7 +12,7 @@ import { JwtAuthGuard } from '@app/common';
 @Module({
   imports: [
     ConfigModule,
-    RedisModule,
+    RedisModule.forRoot(),
     forwardRef(() => UserModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
