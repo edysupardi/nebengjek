@@ -11,11 +11,11 @@ COPY --from=builder /app/dist/apps/tracking-service ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 
-# Health check
+# Health check - FIXED PORT 3006 → 3003
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD node -e "require('http').request('http://localhost:3006/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).end()"
+  CMD node -e "require('http').request('http://localhost:3003/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).end()"
 
-EXPOSE 3006
-# Expose socket.io port if used for real-time tracking
+EXPOSE 3003
+# Expose socket.io port for real-time tracking
 EXPOSE 3060
 CMD ["node", "dist/main"]
