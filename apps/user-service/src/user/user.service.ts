@@ -6,7 +6,7 @@ import { UserResponseDto } from '@app/user/dto/user-response.dto';
 import { plainToClass } from 'class-transformer';
 import { ChangePasswordDto } from '@app/user/dto/change-password.dto';
 import { RegisterUserDto } from '@app/auth/dto/register-user.dto';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UserService {

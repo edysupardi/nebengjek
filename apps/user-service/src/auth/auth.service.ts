@@ -1,7 +1,7 @@
 // auth.service.ts
 import { ConflictException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { UserService } from '@app/user/user.service';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { LoginUserDto } from '@app/auth/dto/login-user.dto';
 import { ConfigService } from '@nestjs/config';
