@@ -11,9 +11,9 @@ COPY --from=builder /app/dist/apps/matching-service ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 
-# Health check
+# Health check - FIXED PORT 3003 → 3006
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD node -e "require('http').request('http://localhost:3003/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).end()"
+  CMD node -e "require('http').request('http://localhost:3006/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).end()"
 
-EXPOSE 3003
+EXPOSE 3006
 CMD ["node", "dist/main"]

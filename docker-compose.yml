@@ -11,16 +11,15 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - JWT_ACCESS_EXPIRES_IN=${JWT_ACCESS_EXPIRES_IN:-15m}
       - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
       - USER_PORT=${USER_PORT:-3001}
-    depends_on:
-      - postgres
-      - redis
+    # Remove postgres and redis dependencies since using external
     volumes:
       - ./apps/user-service:/app/apps/user-service
       - ./libs:/app/libs
@@ -39,8 +38,9 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - BOOKING_PORT=${BOOKING_PORT:-3002}
       - TRACKING_SERVICE_HOST=${TRACKING_SERVICE_HOST:-tracking-service}
       - TRACKING_PORT=${TRACKING_PORT:-3003}
@@ -48,9 +48,6 @@ services:
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
-    depends_on:
-      - postgres
-      - redis
     volumes:
       - ./apps/booking-service:/app/apps/booking-service
       - ./libs:/app/libs
@@ -70,13 +67,11 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - TRACKING_PORT=${TRACKING_PORT:-3003}
       - TRACKING_WS_PORT=${TRACKING_WS_PORT:-3060}
-    depends_on:
-      - postgres
-      - redis
     volumes:
       - ./apps/tracking-service:/app/apps/tracking-service
       - ./libs:/app/libs
@@ -96,13 +91,11 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - NOTIFICATION_WS_PORT=${NOTIFICATION_WS_PORT:-3050}
-    depends_on:
-      - postgres
-      - redis
     volumes:
       - ./apps/notification-service:/app/apps/notification-service
       - ./libs:/app/libs
@@ -121,12 +114,10 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - PAYMENT_PORT=${PAYMENT_PORT:-3005}
-    depends_on:
-      - postgres
-      - redis
     volumes:
       - ./apps/payment-service:/app/apps/payment-service
       - ./libs:/app/libs
@@ -145,12 +136,10 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
-    depends_on:
-      - postgres
-      - redis
     volumes:
       - ./apps/matching-service:/app/apps/matching-service
       - ./libs:/app/libs
@@ -159,69 +148,38 @@ services:
       - nebengjek-network
     restart: unless-stopped
 
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./prisma/schema.prisma:/docker-entrypoint-initdb.d/schema.prisma:ro
-    networks:
-      - nebengjek-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Optional: Local PostgreSQL (commented out since using external)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   ports:
+  #     - "${POSTGRES_PORT:-5432}:5432"
+  #   environment:
+  #     - POSTGRES_USER=${POSTGRES_USER}
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #     - POSTGRES_DB=${POSTGRES_DB}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - nebengjek-network
 
-  # Redis Cache & Message Broker
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
-    volumes:
-      - redis-data:/data
-    networks:
-      - nebengjek-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Optional: Local Redis (commented out since using external)
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "${REDIS_PORT:-6379}:6379"
+  #   command: redis-server --requirepass ${REDIS_PASSWORD:-}
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - nebengjek-network
 
-  # Database Administration (Optional - for development)
+  # Database Administration (for external DB)
   adminer:
     image: adminer:latest
     ports:
       - "${ADMINER_PORT:-8080}:8080"
     environment:
-      - ADMINER_DEFAULT_SERVER=postgres
-    depends_on:
-      - postgres
-    networks:
-      - nebengjek-network
-    restart: unless-stopped
-    profiles:
-      - dev
-
-  # Redis Commander (Optional - for development)
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-    depends_on:
-      - redis
+      - ADMINER_DEFAULT_SERVER=${POSTGRES_HOST}
     networks:
       - nebengjek-network
     restart: unless-stopped
@@ -235,8 +193,8 @@ networks:
       config:
         - subnet: ${DOCKER_SUBNET:-172.20.0.0/16}
 
-volumes:
-  postgres-data:
-    driver: local
-  redis-data:
-    driver: local
+# volumes:
+#   postgres-data:
+#     driver: local
+#   redis-data:
+#     driver: local
