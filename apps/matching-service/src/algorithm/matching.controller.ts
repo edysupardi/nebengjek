@@ -1,15 +1,19 @@
-import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query, UseGuards, Logger } from '@nestjs/common';
 import { MatchingService } from './matching.service';
 import { FindMatchDto } from './dto/find-match.dto';
 import { MatchResponseDto } from './dto/match-response.dto';
 import { MessagePattern } from '@nestjs/microservices';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 
 @Controller('matching')
+@UseGuards(TrustedGatewayGuard)
 export class MatchingController {
+  private readonly logger = new Logger(MatchingController.name);
   constructor(private readonly matchingService: MatchingService) {}
 
   @Post('find')
   async findMatch(@Body() findMatchDto: FindMatchDto): Promise<MatchResponseDto> {
+    this.logger.log(`Finding match for customer ID: ${findMatchDto.customerId} at (${findMatchDto.latitude}, ${findMatchDto.longitude}) with radius ${findMatchDto.radius} km`);
     return this.matchingService.findDrivers(findMatchDto);
   }
 
@@ -25,11 +29,13 @@ export class MatchingController {
       longitude,
       radius
     };
+    this.logger.log(`Finding nearby drivers at (${latitude}, ${longitude}) with radius ${radius} km`);
     return this.matchingService.findDrivers(findMatchDto);
   }
 
   @MessagePattern('findDrivers')
   async findDriversRPC(data: any) {
+    this.logger.log(`Received findDrivers RPC with data: ${JSON.stringify(data)}`);
     const findMatchDto: FindMatchDto = {
       customerId: data.customerId || null,
       latitude: data.latitude,

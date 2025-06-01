@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@app/database/prisma/prisma.service';
 import { RedisService } from '@app/database/redis/redis.service';
 import { FindMatchDto } from './dto/find-match.dto';
@@ -7,6 +7,7 @@ import { DistanceHelper } from './distance.helper';
 
 @Injectable()
 export class MatchingService {
+  private readonly logger = new Logger(MatchingService.name);
   constructor(
     private readonly prisma: PrismaService,
     @Inject('REDIS_CLIENT') private redis: any,
@@ -41,12 +42,17 @@ export class MatchingService {
 
       // Jika tidak ada driver online
       if (onlineDrivers.length === 0) {
+        this.logger.warn('Tidak ada driver yang tersedia saat ini');
         return {
           success: false,
           message: 'Tidak ada driver yang tersedia saat ini',
           data: []
         };
+      } else {
+        this.logger.log(`Ditemukan ${onlineDrivers.length} driver online`);
       }
+
+      this.logger.log(`Mencari driver dalam radius ${radius} km dari (${latitude}, ${longitude})`);
 
       // Filter driver berdasarkan jarak
       const nearbyDrivers = DistanceHelper.filterByDistance(
@@ -76,7 +82,8 @@ export class MatchingService {
         data: formattedDrivers
       };
     } catch (error) {
-      console.error('Error finding drivers:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error saat mencari driver: ${errorMessage}`, error);
       return {
         success: false,
         message: 'Terjadi kesalahan saat mencari driver',

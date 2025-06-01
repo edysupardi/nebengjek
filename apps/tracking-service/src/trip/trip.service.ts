@@ -107,6 +107,7 @@ export class TripService {
       // Get trip data from Redis
       const tripData = await this.redis.get(`trip:${tripId}`);
       if (!tripData) {
+        this.logger.warn(`Trip ${tripId} not found in Redis or has expired`);
         throw new NotFoundException('Trip not found or expired');
       }
 
@@ -125,12 +126,14 @@ export class TripService {
       // Calculate distance from last location if exists
       if (trip.locations.length > 1) {
         const lastLocation = trip.locations[trip.locations.length - 2];
+        this.logger.log(`Calculating distance from last location: ${JSON.stringify(lastLocation)} to new location: ${JSON.stringify(newLocation)}`);
         const distance = this.calculateDistance(
           lastLocation.latitude,
           lastLocation.longitude,
           newLocation.latitude,
           newLocation.longitude
         );
+        this.logger.log(`Distance calculated: ${distance} km`);
 
         // Only add to total distance if moved at least 1km
         if (distance >= 1) {
@@ -185,7 +188,8 @@ export class TripService {
         currentLocation: newLocation,
       };
     } catch (error) {
-      this.logger.error('Failed to update trip location:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to update trip location: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -195,6 +199,7 @@ export class TripService {
       // Get trip data from Redis
       const tripData = await this.redis.get(`trip:${tripId}`);
       if (!tripData) {
+        this.logger.warn(`Trip ${tripId} not found in Redis or has expired`);
         throw new NotFoundException('Trip not found or expired');
       }
   
@@ -254,7 +259,8 @@ export class TripService {
         driverAmount,
       };
     } catch (error) {
-      this.logger.error('Failed to end trip:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to end trip: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -273,12 +279,14 @@ export class TripService {
       // If not in Redis, get from database
       const trip = await this.tripRepository.findById(tripId);
       if (!trip) {
+        this.logger.warn(`Trip ${tripId} not found in database`);
         throw new NotFoundException('Trip not found');
       }
 
       return trip;
     } catch (error) {
-      this.logger.error('Failed to get trip details:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get trip details: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -317,7 +325,8 @@ export class TripService {
         pricePerKm: this.PRICE_PER_KM,
       };
     } catch (error) {
-      this.logger.error(`Failed to calculate trip cost for trip ${tripId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to calculate trip cost for trip ${tripId} with message: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -345,7 +354,8 @@ export class TripService {
         finalPrice: costCalculation.finalPrice || costCalculation.estimatedFinalPrice
       };
     } catch (error) {
-      this.logger.error(`Failed to calculate final cost for booking ${data.bookingId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to calculate final cost for booking ${data.bookingId} with message: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -398,7 +408,8 @@ export class TripService {
         role: trip.booking?.driverId === userId ? 'DRIVER' : 'CUSTOMER',
       }));
     } catch (error) {
-      this.logger.error(`Failed to get trips for user ${userId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get trips for user ${userId} with message ${errorMessage}:`, error);
       throw error;
     }
   }
@@ -425,7 +436,8 @@ export class TripService {
         total: activeTrips.length + redisTrips.length,
       };
     } catch (error) {
-      this.logger.error('Failed to get active trips:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get active trips: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -494,7 +506,8 @@ export class TripService {
         failed: failedRecoveries,
       };
     } catch (error) {
-      this.logger.error('Failed to recover incomplete trips:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to recover incomplete trips: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -513,7 +526,8 @@ export class TripService {
       
       this.logger.warn(`Trip ${tripId} force ended. Reason: ${reason}`);
     } catch (error) {
-      this.logger.error(`Failed to force end trip ${tripId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to force end trip ${tripId} with message: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -551,7 +565,8 @@ export class TripService {
       
       this.logger.log(`Trip completed for booking ${data.bookingId}`);
     } catch (error) {
-      this.logger.error(`Failed to handle trip complete for booking ${data.bookingId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to handle trip complete for booking ${data.bookingId} with message: ${errorMessage}`, error);
     }
   }
 
@@ -578,7 +593,8 @@ export class TripService {
         locations: trip.locations.length
       };
     } catch (error) {
-      this.logger.error(`Failed to get trip distance for booking ${data.bookingId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get trip distance for booking ${data.bookingId} with message: ${errorMessage}`, error);
       throw error;
     }
   }

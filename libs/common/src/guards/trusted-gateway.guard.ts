@@ -88,7 +88,8 @@ export class TrustedGatewayGuard implements CanActivate {
     
     // Add user object to request
     req.user = {
-      sub: userId,
+      sub: userId, // Use 'sub' for compatibility with JWT standards
+      userId: userId, // Custom user ID field
       email: userEmail,
       roles: userRoles,
     };

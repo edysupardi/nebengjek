@@ -75,7 +75,7 @@ import { MessagingModule } from '@app/messaging';
           transport: Transport.TCP,
           options: {
             host: configService.get('MATCHING_SERVICE_HOST', 'localhost'),
-            port: configService.get('MATCHING_PORT', 3004),
+            port: configService.get('MATCHING_PORT', 3006),
           },
         }),
         inject: [ConfigService],
