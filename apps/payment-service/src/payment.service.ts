@@ -116,7 +116,6 @@ export class PaymentService {
     };
   }
   
-  // Tambahkan ini di method finalizePayment di payment.service.ts
   async finalizePayment(finalizePaymentDto: FinalizePaymentDto): Promise<PaymentResponseDto> {
     const { tripId, discount = 0 } = finalizePaymentDto;
     
@@ -129,13 +128,27 @@ export class PaymentService {
     
     // Get trip details to get customer and driver IDs
     const trip = transaction.trip;
-    if (!trip || !trip.booking || !trip.booking.driverId || !trip.booking.customerId) {
-      this.logger.error(`Trip or booking details not found for trip ID ${tripId}`);
-      throw new NotFoundException(`Trip or booking details not found for trip ${tripId}`);
+    if (!trip) {
+      this.logger.error(`Trip details not found for trip ID ${tripId}`);
+      throw new NotFoundException(`Trip details not found for trip ${tripId}`);
     }
     
-    const customerId = trip.booking.customerId;
-    const driverId = trip.booking.driverId;
+    if (!trip.booking) {
+      this.logger.error(`Booking details not found for booking ID ${trip.bookingId}`);
+      throw new NotFoundException(`Booking details not found for booking ${trip.bookingId}`);
+    }
+    const booking = trip.booking;
+    if (!booking.driverId) {
+      this.logger.error(`Driver details not found for booking ID ${booking.id}`);
+      throw new NotFoundException(`Driver details not found for booking ${booking.id}`);
+    }
+    if (!booking.customerId) {
+      this.logger.error(`Customer details not found for booking ID ${booking.id}`);
+      throw new NotFoundException(`Customer details not found for booking ${booking.id}`);
+    }
+    
+    const customerId = booking.customerId;
+    const driverId = booking.driverId;
     
     // Calculate final amount after discount
     const finalAmount = Math.max(0, transaction.totalFare - discount);

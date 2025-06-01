@@ -31,7 +31,16 @@ export class TransactionRepository {
     const result = await this.prisma.transaction.findUnique({
       where: { tripId },
       include: {
-        trip: true,
+        trip: {
+          include: {
+            booking: {
+              include: {
+                driver: true,
+                customer: true, // atau user tergantung pada skema Anda
+              },
+            },
+          },
+        },
       },
     });
     

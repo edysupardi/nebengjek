@@ -9,6 +9,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
+  port: process.env.TRACKING_WS_PORT || 3060,
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],

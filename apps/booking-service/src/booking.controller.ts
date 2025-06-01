@@ -5,6 +5,7 @@ import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.d
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
+import { Roles, UserRole } from '@app/common';
 
 @Controller('bookings')
 @UseGuards(TrustedGatewayGuard)
@@ -49,6 +50,7 @@ export class BookingController {
   }
 
   @Put(':bookingId/accept')
+  @Roles(UserRole.DRIVER)
   async acceptBooking(
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
@@ -58,6 +60,7 @@ export class BookingController {
   }
 
   @Put(':bookingId/reject')
+  @Roles(UserRole.DRIVER)
   async rejectBooking(
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
@@ -76,6 +79,7 @@ export class BookingController {
   }
 
   @Put(':bookingId/complete')
+  @Roles(UserRole.DRIVER)
   async completeBooking(
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string

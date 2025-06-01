@@ -26,7 +26,7 @@ export class BookingService {
 
   async createBooking(userId: string, createBookingDto: CreateBookingDto) {
     try {
-      this.logger.log(`Creating booking for user ${userId}`);
+      this.logger.log(`Creating booking for customer ${userId}`);
       
       // First check if user already has active booking
       const activeBooking = await this.bookingRepository.findActiveBookingByCustomer(userId);
@@ -103,13 +103,15 @@ export class BookingService {
           this.logger.warn(`No nearby drivers found for booking ${booking.id}`);
         }
       } catch (error) {
-        this.logger.error('Failed to find nearby drivers:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Failed to find nearby drivers: ${errorMessage}`, error);
         // We still return the booking even if we can't find drivers
       }
   
       return booking;
     } catch (error) {
-      this.logger.error('Failed to create booking:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to create booking: ${errorMessage}`, error);
       throw error;
     }
   }

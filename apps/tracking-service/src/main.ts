@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ResponseInterceptor } from '@app/common';
 import { Logger } from 'nestjs-pino';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(TrackingModule);
@@ -33,8 +34,14 @@ async function bootstrap() {
   const excludedPaths = [''];
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
 
+  // ✅ ADD WebSocket adapter
+  app.useWebSocketAdapter(new IoAdapter(app));
+
   const port = process.env.TRACKING_PORT || 3003;
   console.log(`Tracking service is running on port ${port}`);
   await app.listen(port);
+
+  const wsPort = process.env.TRACKING_WS_PORT || 3060;
+  console.log(`WebSocket server running on port ${wsPort}`);
 }
 bootstrap();
