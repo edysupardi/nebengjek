@@ -92,11 +92,17 @@ export class BookingService {
         
         // Send notifications to nearby drivers through legacy service
         if (nearbyDriversResponse && nearbyDriversResponse.drivers && nearbyDriversResponse.drivers.length > 0) {
+          this.logger.log(`Found ${nearbyDriversResponse.drivers.length} nearby drivers for booking ${booking.id} with driver details: ${JSON.stringify(nearbyDriversResponse.drivers)}`);
           nearbyDriversResponse.drivers.forEach((driver: NearbyDriver) => {
             this.notificationServiceClient.emit('booking.new', {
               bookingId: booking.id,
-              driverId: driver.driverId,
+              driverId: driver.userId,
+              customerId: userId,
               distance: driver.distance,
+              pickupLocation: {     // ← ADD THIS TOO
+                latitude: createBookingDto.pickupLatitude,
+                longitude: createBookingDto.pickupLongitude,
+              }
             } as BookingNotification);
           });
         } else {

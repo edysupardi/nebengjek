@@ -10,16 +10,62 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
   private readonly subscribedChannels: Set<string> = new Set();
   private readonly channelCallbacks: Map<string, Set<(payload: any) => void>> = new Map();
   
+  // Separate connections for publisher and subscriber
+  private publisherClient: any;
+  private subscriberClient: any;
+  
   constructor(
     private eventEmitter: EventEmitter2,
-    @Inject('REDIS_CLIENT') private redisService: any,
+    @Inject('REDIS_CLIENT') private defaultRedisService: any,
+    @Optional() @Inject('MESSAGING_REDIS_CLIENT') private messagingRedisClient: any,
     @Optional() @Inject('MESSAGING_OPTIONS') private options?: any
-  ) {}
+  ) {
+    // Create separate connections for publisher and subscriber
+    this.initializeRedisConnections();
+  }
+
+  private initializeRedisConnections(): void {
+    const redisConfig = this.getRedisConfig();
+    
+    // Create separate Redis clients
+    const Redis = require('ioredis');
+    
+    if (redisConfig) {
+      // Use custom Redis config if provided
+      this.publisherClient = new Redis(redisConfig);
+      this.subscriberClient = new Redis(redisConfig);
+    } else {
+      // Use default Redis config
+      const defaultConfig = {
+        host: process.env.REDIS_HOST || 'redis',
+        port: parseInt(process.env.REDIS_PORT || '6379'),
+        db: 1 // Use database 1 for messaging
+      };
+      this.publisherClient = new Redis(defaultConfig);
+      this.subscriberClient = new Redis(defaultConfig);
+    }
+  }
+
+  private getRedisConfig(): any {
+    if (this.options?.redisConfig) {
+      return this.options.redisConfig;
+    }
+    return null;
+  }
 
   async onModuleInit() {
-    this.logger.log('Initializing messaging service');
+    this.logger.log('Initializing messaging service with separate Redis connections');
     
-    // Any initialization from options could go here
+    // Test both connections
+    try {
+      await this.publisherClient.ping();
+      await this.subscriberClient.ping();
+      this.logger.log('Messaging Redis connections successful (publisher & subscriber)');
+    } catch (error) {
+      this.logger.error('Messaging Redis connection failed:', error);
+    }
+    
+    // Auto-subscribe to configured channels
     if (this.options?.channels) {
       for (const channel of this.options.channels) {
         this.subscribe(channel, (payload) => {
@@ -32,9 +78,22 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.logger.log('Cleaning up messaging service subscriptions');
+    
     // Unsubscribe from all channels
     for (const channel of this.subscribedChannels) {
-      this.redisService.unsubscribe(channel);
+      try {
+        await this.subscriberClient.unsubscribe(channel);
+      } catch (error) {
+        this.logger.error(`Error unsubscribing from ${channel}:`, error);
+      }
+    }
+    
+    // Close connections
+    try {
+      await this.publisherClient.quit();
+      await this.subscriberClient.quit();
+    } catch (error) {
+      this.logger.error('Error closing Redis connections:', error);
     }
   }
 
@@ -72,10 +131,14 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
         timestamp: new Date().toISOString(),
         source: this.options?.serviceName || 'unknown',
       });
-      await this.redisService.publish(String(event), message);
+      
+      // Use dedicated publisher client
+      await this.publisherClient.publish(String(event), message);
       
       // Also emit locally for any local subscribers
       this.emitLocal(event, payload);
+      
+      this.logger.debug(`[GLOBAL] Successfully published event: ${String(event)}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Failed to publish event ${String(event)}: ${errorMessage}`);
@@ -102,27 +165,44 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     if (!this.subscribedChannels.has(eventName)) {
       this.subscribedChannels.add(eventName);
       
-      this.redisService.subscribe(eventName, (message: string) => {
-        try {
-          const data = JSON.parse(message);
-          
-          // Skip messages sent by this instance if specified in options
-          if (this.options?.skipSelfMessages && data.source === this.options.serviceName) {
-            return;
-          }
-          
-          // Execute all callbacks registered for this event
-          const callbacks = this.channelCallbacks.get(eventName);
-          if (callbacks) {
-            for (const cb of callbacks) {
-              cb(data.payload);
-            }
-          }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          this.logger.error(`Error processing event ${eventName}: ${errorMessage}`);
+      // Use dedicated subscriber client
+      this.subscriberClient.subscribe(eventName);
+      this.subscriberClient.on('message', (channel: string, message: string) => {
+        if (channel === eventName) {
+          this.processRedisMessage(eventName, message);
         }
       });
+      
+      this.logger.debug(`[GLOBAL] Successfully subscribed to event: ${eventName}`);
+    }
+  }
+
+  private processRedisMessage(eventName: string, message: string): void {
+    try {
+      const data = JSON.parse(message);
+      
+      // Skip messages sent by this instance if specified in options
+      if (this.options?.skipSelfMessages && data.source === this.options.serviceName) {
+        this.logger.debug(`[GLOBAL] Skipping self-sent message for event: ${eventName}`);
+        return;
+      }
+      
+      this.logger.debug(`[GLOBAL] Processing message for event: ${eventName}`);
+      
+      // Execute all callbacks registered for this event
+      const callbacks = this.channelCallbacks.get(eventName);
+      if (callbacks) {
+        for (const cb of callbacks) {
+          try {
+            cb(data.payload);
+          } catch (error) {
+            this.logger.error(`Error executing callback for event ${eventName}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error processing event ${eventName}: ${errorMessage}`);
     }
   }
 
@@ -142,14 +222,14 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
         callbacks.delete(callback as any);
         if (callbacks.size === 0) {
           this.channelCallbacks.delete(eventName);
-          this.redisService.unsubscribe(eventName);
+          this.subscriberClient.unsubscribe(eventName);
           this.subscribedChannels.delete(eventName);
         }
       }
     } else {
       // Remove all callbacks for this event
       this.channelCallbacks.delete(eventName);
-      this.redisService.unsubscribe(eventName);
+      this.subscriberClient.unsubscribe(eventName);
       this.subscribedChannels.delete(eventName);
     }
   }
@@ -169,9 +249,26 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get the Redis service for advanced use cases
+   * Get the publisher Redis client for advanced use cases
    */
-  getRedisService(): RedisService {
-    return this.redisService;
+  getPublisherClient(): any {
+    return this.publisherClient;
+  }
+
+  /**
+   * Get the subscriber Redis client for advanced use cases
+   */
+  getSubscriberClient(): any {
+    return this.subscriberClient;
+  }
+
+  /**
+   * Get connection info for debugging
+   */
+  getConnectionInfo(): { publisher: string; subscriber: string } {
+    return {
+      publisher: `${this.publisherClient.options.host}:${this.publisherClient.options.port}/db${this.publisherClient.options.db || 0}`,
+      subscriber: `${this.subscriberClient.options.host}:${this.subscriberClient.options.port}/db${this.subscriberClient.options.db || 0}`
+    };
   }
 }

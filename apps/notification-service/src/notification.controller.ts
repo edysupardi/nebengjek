@@ -11,7 +11,7 @@ export class NotificationController {
 
   constructor(private readonly notificationService: NotificationService) { }
 
-  // ===== EXISTING HTTP ENDPOINTS =====
+  // ===== EXISTING HTTP ENDPOINTS (with guard) =====
   @Get()
   @UseGuards(TrustedGatewayGuard)
   async getUserNotifications(@CurrentUser() user: { id: string }) {
@@ -30,7 +30,7 @@ export class NotificationController {
     return this.notificationService.markAllNotificationsAsRead(user.id);
   }
 
-  // ===== NEW TCP MESSAGE PATTERNS =====
+  // ===== TCP MESSAGE PATTERNS (no guard) =====
 
   /**
    * TCP Message Pattern: Send notification to user
@@ -46,28 +46,17 @@ export class NotificationController {
     try {
       this.logger.log(`Sending ${data.type} notification to user ${data.userId}: ${data.title}`);
 
-      // Use existing NotificationService to send notification
-      // TODO: Add sendNotification method to NotificationService if not exists
-      // For now, create a notification record
-
-      const notification = {
+      // Use existing NotificationService.createNotification method
+      const result = await this.notificationService.createNotification({
         userId: data.userId,
         title: data.title,
         message: data.message,
         type: data.data?.type || 'general',
-        data: data.data,
-        isRead: false,
-        createdAt: new Date()
-      };
+        relatedId: data.data?.bookingId || data.data?.tripId,
+        data: data.data
+      });
 
-      // TODO: Integrate with existing NotificationService.createNotification
-      this.logger.log(`Notification created: ${JSON.stringify(notification)}`);
-
-      return {
-        success: true,
-        notificationId: `notif_${Date.now()}`,
-        message: 'Notification sent successfully'
-      };
+      return result;
 
     } catch (error) {
       this.logger.error('Error sending notification:', error);
@@ -90,7 +79,7 @@ export class NotificationController {
     try {
       this.logger.log(`Getting notifications for user ${data.userId}`);
 
-      // Use existing NotificationService
+      // Use existing NotificationService method
       const notifications = await this.notificationService.getUserNotifications(data.userId);
 
       return {
@@ -112,7 +101,7 @@ export class NotificationController {
     }
   }
 
-  // ===== NEW TCP EVENT PATTERNS =====
+  // ===== TCP EVENT PATTERNS =====
 
   /**
    * TCP Event Pattern: Handle new booking notifications
@@ -131,12 +120,13 @@ export class NotificationController {
     try {
       this.logger.log(`New booking notification for driver ${data.driverId}, booking ${data.bookingId}`);
 
-      // Send notification via TCP message pattern
-      await this.sendNotification({
+      // Use existing NotificationService method
+      await this.notificationService.createNotification({
         userId: data.driverId,
-        type: 'push',
         title: 'New Booking Request',
         message: `New booking request ${data.distance.toFixed(1)}km away. Tap to view details.`,
+        type: 'new_booking',
+        relatedId: data.bookingId,
         data: {
           bookingId: data.bookingId,
           type: 'new_booking',
@@ -164,12 +154,13 @@ export class NotificationController {
     try {
       this.logger.log(`Booking accepted notification for customer ${data.customerId}, booking ${data.bookingId}`);
 
-      // Send notification to customer
-      await this.sendNotification({
+      // Use existing NotificationService method
+      await this.notificationService.createNotification({
         userId: data.customerId,
-        type: 'push',
         title: 'Booking Accepted!',
         message: `${data.driverName || 'Driver'} accepted your booking. Estimated arrival: ${data.estimatedArrival || 5} minutes.`,
+        type: 'booking_accepted',
+        relatedId: data.bookingId,
         data: {
           bookingId: data.bookingId,
           driverId: data.driverId,
@@ -199,11 +190,12 @@ export class NotificationController {
 
       if (data.cancelledBy === 'customer' && data.driverId) {
         // Notify driver about customer cancellation
-        await this.sendNotification({
+        await this.notificationService.createNotification({
           userId: data.driverId,
-          type: 'push',
           title: 'Booking Cancelled',
           message: 'Customer has cancelled the booking.',
+          type: 'booking_cancelled',
+          relatedId: data.bookingId,
           data: {
             bookingId: data.bookingId,
             type: 'booking_cancelled',
@@ -213,11 +205,12 @@ export class NotificationController {
         });
       } else if (data.cancelledBy === 'driver' && data.customerId) {
         // Notify customer about driver cancellation
-        await this.sendNotification({
+        await this.notificationService.createNotification({
           userId: data.customerId,
-          type: 'push',
           title: 'Booking Cancelled',
           message: 'Driver has cancelled the booking. We\'re finding you another driver.',
+          type: 'booking_cancelled',
+          relatedId: data.bookingId,
           data: {
             bookingId: data.bookingId,
             type: 'booking_cancelled',
@@ -246,11 +239,12 @@ export class NotificationController {
       this.logger.log(`Trip started notification for booking ${data.bookingId}`);
 
       // Notify customer that trip has started
-      await this.sendNotification({
+      await this.notificationService.createNotification({
         userId: data.customerId,
-        type: 'push',
         title: 'Trip Started',
         message: `Your driver has started the trip. Estimated arrival: ${data.estimatedArrival || 15} minutes.`,
+        type: 'trip_started',
+        relatedId: data.bookingId,
         data: {
           bookingId: data.bookingId,
           driverId: data.driverId,
@@ -282,11 +276,12 @@ export class NotificationController {
       this.logger.log(`Trip completed notification for booking ${data.bookingId}`);
 
       // Notify customer about trip completion
-      await this.sendNotification({
+      await this.notificationService.createNotification({
         userId: data.customerId,
-        type: 'push',
         title: 'Trip Completed',
         message: `Your trip has been completed. Total: Rp ${data.tripDetails?.totalCost?.toLocaleString() || 'N/A'}`,
+        type: 'trip_completed',
+        relatedId: data.bookingId,
         data: {
           bookingId: data.bookingId,
           type: 'trip_completed',
@@ -296,11 +291,12 @@ export class NotificationController {
 
       // Notify driver about trip completion  
       if (data.driverId) {
-        await this.sendNotification({
+        await this.notificationService.createNotification({
           userId: data.driverId,
-          type: 'push',
           title: 'Trip Completed',
           message: `Trip completed successfully. Payment processed.`,
+          type: 'trip_completed',
+          relatedId: data.bookingId,
           data: {
             bookingId: data.bookingId,
             type: 'trip_completed',
@@ -331,11 +327,12 @@ export class NotificationController {
       this.logger.log(`Driver arrived notification for booking ${data.bookingId}`);
 
       // Notify customer that driver has arrived
-      await this.sendNotification({
+      await this.notificationService.createNotification({
         userId: data.customerId,
-        type: 'push',
         title: 'Driver Arrived',
         message: 'Your driver has arrived at the pickup location.',
+        type: 'driver_arrived',
+        relatedId: data.bookingId,
         data: {
           bookingId: data.bookingId,
           driverId: data.driverId,

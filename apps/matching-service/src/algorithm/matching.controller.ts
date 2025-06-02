@@ -56,7 +56,8 @@ export class MatchingController {
       // Transform response to match booking service expectations
       if (result.success && result.data.length > 0) {
         const transformedDrivers = result.data.map(driver => ({
-          driverId: driver.id,        // Map 'id' to 'driverId' 
+          driverId: driver.id,
+          userId: driver.userId,
           distance: driver.distance,
           name: driver.name,
           phone: driver.phone,
