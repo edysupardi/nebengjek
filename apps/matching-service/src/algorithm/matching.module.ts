@@ -41,7 +41,20 @@ import { PrismaService } from '@app/database';
     })
   ],
   controllers: [MatchingController],
-  providers: [MatchingService],
+  providers: [
+    MatchingService,
+    {
+      provide: 'REDIS_CLIENT',
+      useFactory: (configService: ConfigService) => {
+        const Redis = require('ioredis');
+        return new Redis({
+          host: configService.get('REDIS_HOST', 'redis'),
+          port: configService.get('REDIS_PORT', 6379),
+        });
+      },
+      inject: [ConfigService],
+    }
+  ],
   exports: [MatchingService],
 })
 export class MatchingModule {}

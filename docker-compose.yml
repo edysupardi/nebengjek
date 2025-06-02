@@ -48,6 +48,10 @@ services:
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
+      # TCP client connections
+      - MATCHING_TCP_PORT=8006
+      - NOTIFICATION_TCP_PORT=8004
+      - TRACKING_TCP_PORT=8003
     volumes:
       - ./apps/booking-service:/app/apps/booking-service
       - ./libs:/app/libs
@@ -55,6 +59,10 @@ services:
     networks:
       - nebengjek-network
     restart: unless-stopped
+    depends_on:
+      - matching-service
+      - notification-service
+      - tracking-service
 
   # Tracking Service
   tracking-service:
@@ -88,6 +96,7 @@ services:
     ports:
       - "${NOTIFICATION_PORT:-3004}:${NOTIFICATION_PORT:-3004}"
       - "${NOTIFICATION_WS_PORT:-3050}:${NOTIFICATION_WS_PORT:-3050}"
+      - "${NOTIFICATION_TCP_PORT:-3050}:${NOTIFICATION_TCP_PORT:-3050}"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -96,6 +105,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - NOTIFICATION_WS_PORT=${NOTIFICATION_WS_PORT:-3050}
+      - NOTIFICATION_TCP_PORT=8004
     volumes:
       - ./apps/notification-service:/app/apps/notification-service
       - ./libs:/app/libs
@@ -133,6 +143,7 @@ services:
       dockerfile: ./deployment/docker/matching-service.dockerfile
     ports:
       - "${MATCHING_PORT:-3006}:${MATCHING_PORT:-3006}"
+      - "${MATCHING_TCP_PORT:-8006}:${MATCHING_TCP_PORT:-8006}"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -140,6 +151,7 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
+      - MATCHING_TCP_PORT=8006
     volumes:
       - ./apps/matching-service:/app/apps/matching-service
       - ./libs:/app/libs

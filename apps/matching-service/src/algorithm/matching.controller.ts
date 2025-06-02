@@ -6,19 +6,20 @@ import { MessagePattern, EventPattern } from '@nestjs/microservices';
 import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 
 @Controller('matching')
-@UseGuards(TrustedGatewayGuard)
 export class MatchingController {
   private readonly logger = new Logger(MatchingController.name);
   constructor(private readonly matchingService: MatchingService) { }
 
   // ===== EXISTING HTTP ENDPOINTS =====
   @Post('find')
+  @UseGuards(TrustedGatewayGuard)
   async findMatch(@Body() findMatchDto: FindMatchDto): Promise<MatchResponseDto> {
     this.logger.log(`Finding match for customer ID: ${findMatchDto.customerId} at (${findMatchDto.latitude}, ${findMatchDto.longitude}) with radius ${findMatchDto.radius} km`);
     return this.matchingService.findDrivers(findMatchDto);
   }
 
   @Get('drivers/nearby')
+  @UseGuards(TrustedGatewayGuard)
   async findNearbyDrivers(
     @Query('latitude') latitude: number,
     @Query('longitude') longitude: number,

@@ -6,7 +6,6 @@ import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { MessagePattern, EventPattern } from '@nestjs/microservices';
 
 @Controller('notifications')
-@UseGuards(TrustedGatewayGuard)
 export class NotificationController {
   private readonly logger = new Logger(NotificationController.name);
 
@@ -14,16 +13,19 @@ export class NotificationController {
 
   // ===== EXISTING HTTP ENDPOINTS =====
   @Get()
+  @UseGuards(TrustedGatewayGuard)
   async getUserNotifications(@CurrentUser() user: { id: string }) {
     return this.notificationService.getUserNotifications(user.id);
   }
 
   @Patch(':id/read')
+  @UseGuards(TrustedGatewayGuard)
   async markAsRead(@Param('id') id: string) {
     return this.notificationService.markNotificationAsRead(id);
   }
 
   @Patch('read-all')
+  @UseGuards(TrustedGatewayGuard)
   async markAllAsRead(@CurrentUser() user: { id: string }) {
     return this.notificationService.markAllNotificationsAsRead(user.id);
   }
