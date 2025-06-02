@@ -50,8 +50,8 @@ import { MessagingModule } from '@app/messaging';
         useFactory: (configService: ConfigService) => ({
           transport: Transport.TCP,
           options: {
-            host: configService.get('TRACKING_SERVICE_HOST', 'localhost'),
-            port: configService.get('TRACKING_PORT', 3003),
+            host: configService.get('TRACKING_SERVICE_HOST', 'tracking-service'),
+            port: configService.get('TRACKING_TCP_PORT', 8003), // TCP port for tracking
           },
         }),
         inject: [ConfigService],
@@ -62,8 +62,8 @@ import { MessagingModule } from '@app/messaging';
         useFactory: (configService: ConfigService) => ({
           transport: Transport.TCP,
           options: {
-            host: configService.get('NOTIFICATION_SERVICE_HOST', 'localhost'),
-            port: configService.get('NOTIFICATION_PORT', 3004),
+            host: configService.get('NOTIFICATION_SERVICE_HOST', 'notification-service'),
+            port: configService.get('NOTIFICATION_TCP_PORT', 8004), // TCP port for notification
           },
         }),
         inject: [ConfigService],
@@ -74,8 +74,8 @@ import { MessagingModule } from '@app/messaging';
         useFactory: (configService: ConfigService) => ({
           transport: Transport.TCP,
           options: {
-            host: configService.get('MATCHING_SERVICE_HOST', 'localhost'),
-            port: configService.get('MATCHING_PORT', 3006),
+            host: configService.get('MATCHING_SERVICE_HOST', 'matching-service'),
+            port: configService.get('MATCHING_TCP_PORT', 8006), // TCP port for matching
           },
         }),
         inject: [ConfigService],
@@ -87,6 +87,17 @@ import { MessagingModule } from '@app/messaging';
     BookingService,
     BookingRepository,
     PrismaService,
+    {
+      provide: 'REDIS_CLIENT',
+      useFactory: (configService: ConfigService) => {
+        const Redis = require('ioredis');
+        return new Redis({
+          host: configService.get('REDIS_HOST', 'redis'),
+          port: configService.get('REDIS_PORT', 6379),
+        });
+      },
+      inject: [ConfigService],
+    },
   ],
 })
-export class BookingModule {}
+export class BookingModule { }

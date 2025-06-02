@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsArray } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class FindMatchDto {
@@ -17,4 +17,18 @@ export class FindMatchDto {
   @IsNumber()
   @Transform(({ value }) => parseFloat(value)) // ✅ Ensure number conversion
   radius: number = 1;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  excludeDrivers?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  preferredDrivers?: string[];
+
+  @IsOptional()
+  @IsString()
+  bookingId?: string; // For tracking which booking this search is for
 }
