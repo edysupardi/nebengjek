@@ -11,7 +11,7 @@ import { Roles, UserRole } from '@app/common';
 @UseGuards(TrustedGatewayGuard)
 export class BookingController {
   private readonly logger = new Logger(BookingController.name);
-  constructor(private readonly bookingService: BookingService) {}
+  constructor(private readonly bookingService: BookingService) { }
 
   @Post()
   async createBooking(
@@ -55,7 +55,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
-    this.logger.log(`Accepting booking for booking ID ${bookingId} by user ${user.userId}`);
+    this.logger.log(`Accepting booking for booking ID ${bookingId} by driver ${user.userId}`);
     return this.bookingService.acceptBooking(bookingId, user.userId);
   }
 
@@ -65,7 +65,7 @@ export class BookingController {
     @CurrentUser() user: any,
     @Param('bookingId') bookingId: string
   ) {
-    this.logger.log(`Rejecting booking for booking ID ${bookingId} by user ${user.userId}`);
+    this.logger.log(`Rejecting booking for booking ID ${bookingId} by driver ${user.userId}`);
     return this.bookingService.rejectBooking(bookingId, user.userId);
   }
 
@@ -76,16 +76,6 @@ export class BookingController {
   ) {
     this.logger.log(`Cancelling booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.cancelBooking(bookingId, user.userId);
-  }
-
-  @Put(':bookingId/complete')
-  @Roles(UserRole.DRIVER)
-  async completeBooking(
-    @CurrentUser() user: any,
-    @Param('bookingId') bookingId: string
-  ) {
-    this.logger.log(`Completing booking for booking ID ${bookingId} by user ${user.userId}`);
-    return this.bookingService.completeBooking(bookingId, user.userId);
   }
 
   @Delete(':bookingId')

@@ -1,4 +1,4 @@
-// libs/messaging/src/constants/event.ts
+// libs/messaging/src/constants/event-types.ts
 
 /**
  * Enum of all booking related events
@@ -62,6 +62,7 @@ export interface EventPayloadMap {
     destinationLongitude: number;
     customerName?: string;
   };
+
   [BookingEvents.UPDATED]: {
     bookingId: string;
     customerId: string;
@@ -72,6 +73,7 @@ export interface EventPayloadMap {
     driverLongitude?: number;
     estimatedArrivalTime?: number;
   };
+
   [BookingEvents.ACCEPTED]: {
     bookingId: string;
     customerId: string;
@@ -81,21 +83,31 @@ export interface EventPayloadMap {
     driverLongitude?: number;
     estimatedArrivalTime?: number;
   };
+
   [BookingEvents.REJECTED]: {
     bookingId: string;
     driverId: string;
     customerId: string;
   };
+
   [BookingEvents.CANCELLED]: {
     bookingId: string;
     customerId: string;
     driverId?: string;
     cancelledBy: 'driver' | 'customer' | 'system';
   };
+
   [BookingEvents.COMPLETED]: {
     bookingId: string;
     customerId: string;
-    tripDetails: any;
+    tripDetails: {
+      completedAt?: Date;
+      status?: string;
+      distance?: number;
+      finalPrice?: number;
+      driverAmount?: number;
+      platformFee?: number;
+    };
   };
 
   // Trip events
@@ -109,6 +121,7 @@ export interface EventPayloadMap {
       longitude: number;
     };
   };
+
   [TripEvents.UPDATED]: {
     tripId: string;
     bookingId: string;
@@ -121,12 +134,14 @@ export interface EventPayloadMap {
     statusMessage?: string;
     updatedETA?: number;
   };
+
   [TripEvents.LOCATION_UPDATED]: {
     tripId: string;
     driverId: string;
     latitude: number;
     longitude: number;
   };
+
   [TripEvents.ENDED]: {
     tripId: string;
     bookingId: string;
@@ -145,6 +160,7 @@ export interface EventPayloadMap {
     platformFee: number;
     driverAmount: number;
   };
+
   [PaymentEvents.COMPLETED]: {
     tripId: string;
     bookingId: string;
@@ -154,6 +170,7 @@ export interface EventPayloadMap {
     driverAmount: number;
     platformFee: number;
   };
+
   [PaymentEvents.FAILED]: {
     tripId: string;
     bookingId: string;
@@ -168,6 +185,7 @@ export interface EventPayloadMap {
     status: boolean;
     timestamp: number;
   };
+
   [DriverEvents.LOCATION_UPDATED]: {
     driverId: string;
     latitude: number;
@@ -182,6 +200,7 @@ export interface EventPayloadMap {
     content: string;
     relatedId?: string;
   };
+
   [NotificationEvents.READ]: {
     notificationId: string;
     userId: string;
