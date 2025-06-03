@@ -8,6 +8,7 @@ import { TripGateway } from './trip.gateway';
 import { LocationModule } from '../location/location.module';
 import { MessagingModule } from '@app/messaging';
 import { LoggingModule } from '@app/common/modules/logging.module';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 
 @Module({
   imports: [
@@ -22,6 +23,32 @@ import { LoggingModule } from '@app/common/modules/logging.module';
     }),
     RedisModule.forRoot(),
     LoggingModule,
+    ClientsModule.registerAsync([
+      {
+        name: 'PAYMENT_SERVICE',
+        imports: [ConfigModule],
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.TCP,
+          options: {
+            host: configService.get('PAYMENT_SERVICE_HOST', 'payment-service'),
+            port: configService.get('PAYMENT_TCP_PORT', 8007),
+          },
+        }),
+        inject: [ConfigService],
+      },
+      {
+        name: 'BOOKING_SERVICE',
+        imports: [ConfigModule],
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.TCP,
+          options: {
+            host: configService.get('BOOKING_SERVICE_HOST', 'booking-service'),
+            port: configService.get('BOOKING_TCP_PORT', 8007),
+          },
+        }),
+        inject: [ConfigService],
+      },
+    ]),
   ],
   controllers: [TripController],
   providers: [
