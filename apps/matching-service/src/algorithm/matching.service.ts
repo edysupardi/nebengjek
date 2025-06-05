@@ -68,6 +68,7 @@ export class MatchingService {
       const onlineDrivers = await this.prisma.driverProfile.findMany({
         where: {
           status: true, // hanya driver yang online
+          vehicleType: 'MOTORCYCLE', // hanya motor
           lastLatitude: { not: null },
           lastLongitude: { not: null },
           // Exclude all blocked/rejected drivers

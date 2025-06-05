@@ -147,8 +147,9 @@ export interface EventPayloadMap {
     bookingId: string;
     driverId: string;
     customerId: string;
-    distance: number;
     fare: number;
+    actualDistance: number;
+    billableKm: number;
   };
 
   // Payment events

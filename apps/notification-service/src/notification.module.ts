@@ -16,6 +16,7 @@ import { LoggingModule } from '@app/common/modules/logging.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
     }),
     DatabaseModule,
     RedisModule.forRoot(),

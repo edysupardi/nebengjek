@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BookingController } from '@app/booking/booking.controller';
 import { BookingService } from '@app/booking/booking.service';
 import { BookingRepository } from '@app/booking/repositories/booking.repository';
-import { PrismaService } from '@app/database';
+import { PrismaService, RedisModule } from '@app/database';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { HttpModule } from '@nestjs/axios';
 import { LoggingModule } from '@app/common/modules/logging.module';
@@ -20,6 +20,7 @@ import { MessagingModule } from '@app/messaging';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    RedisModule.forRoot(),
     LoggingModule,
     MessagingModule.forRootAsync({
       imports: [ConfigModule],
@@ -44,18 +45,6 @@ import { MessagingModule } from '@app/messaging';
     }),
     HttpModule,
     ClientsModule.registerAsync([
-      {
-        name: 'TRACKING_SERVICE',
-        imports: [ConfigModule],
-        useFactory: (configService: ConfigService) => ({
-          transport: Transport.TCP,
-          options: {
-            host: configService.get('TRACKING_SERVICE_HOST', 'tracking-service'),
-            port: configService.get('TRACKING_TCP_PORT', 8003), // TCP port for tracking
-          },
-        }),
-        inject: [ConfigService],
-      },
       {
         name: 'NOTIFICATION_SERVICE',
         imports: [ConfigModule],
@@ -87,17 +76,10 @@ import { MessagingModule } from '@app/messaging';
     BookingService,
     BookingRepository,
     PrismaService,
-    {
-      provide: 'REDIS_CLIENT',
-      useFactory: (configService: ConfigService) => {
-        const Redis = require('ioredis');
-        return new Redis({
-          host: configService.get('REDIS_HOST', 'redis'),
-          port: configService.get('REDIS_PORT', 6379),
-        });
-      },
-      inject: [ConfigService],
-    },
+  ],
+  exports: [
+    BookingService,
+    BookingRepository,
   ],
 })
 export class BookingModule { }

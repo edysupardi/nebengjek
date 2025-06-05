@@ -11,6 +11,10 @@ import { LoggingModule } from '@app/common/modules/logging.module';
 @Module({
   controllers: [LocationController],
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

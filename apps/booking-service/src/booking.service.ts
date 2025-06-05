@@ -8,7 +8,6 @@ import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { BookingNotification, NearbyDriver } from '@app/common';
 import { MessagingService } from '@app/messaging';
 import { BookingEvents } from '@app/messaging/events/event-types';
-import { MessagePattern } from '@nestjs/microservices';
 
 @Injectable()
 export class BookingService {
@@ -156,7 +155,7 @@ export class BookingService {
     }
   }
 
-  async updateBookingStatus(bookingId: string, userId: string, status: BookingStatus) {
+  async updateBookingStatus(bookingId: string, userId: string, status: BookingStatus, updatedAt?: Date) {
     try {
       // First check if booking exists
       const booking = await this.bookingRepository.findById(bookingId);
@@ -175,7 +174,26 @@ export class BookingService {
       this.validateStatusTransition(booking.status, status, userId, booking);
 
       // Update booking status
-      const updatedBooking = await this.bookingRepository.update(bookingId, { status });
+      const updateData: any = { status };
+      const updateDateAt = updatedAt || new Date();
+      switch (status) {
+        case BookingStatus.ACCEPTED:
+          updateData.acceptedAt = updateDateAt;
+          break;
+        case BookingStatus.REJECTED:
+          updateData.rejectedAt = updateDateAt;
+          break;
+        case BookingStatus.CANCELLED:
+          updateData.cancelledAt = updateDateAt;
+          break;
+        case BookingStatus.ONGOING:
+          updateData.startedAt = updateDateAt;
+          break;
+        case BookingStatus.COMPLETED:
+          updateData.completedAt = updateDateAt;
+          break;
+      }
+      const updatedBooking = await this.bookingRepository.update(bookingId, updateData);
 
       // Notify relevant parties
       this.notifyStatusUpdate(updatedBooking);
@@ -360,65 +378,28 @@ export class BookingService {
     }
   }
 
-  // ✅ NEW: Message handler for trip service to update booking status
-  @MessagePattern('booking.updateStatus')
-  async updateBookingStatusFromTrip(data: {
-    bookingId: string,
-    status: BookingStatus,
-    startedAt?: Date
-  }) {
+  async completeBookingFromTrip(bookingId: string, completedAt: Date) {
     try {
-      this.logger.log(`Updating booking ${data.bookingId} status to ${data.status} from trip service`);
+      this.logger.log(`Completing booking ${bookingId} from trip service`);
 
-      const updateData: any = { status: data.status };
-      if (data.startedAt) {
-        updateData.startedAt = data.startedAt;
-      }
-
-      const updatedBooking = await this.bookingRepository.update(data.bookingId, updateData);
-
-      // Publish booking updated event
-      await this.messagingService.publish(BookingEvents.UPDATED, {
-        bookingId: data.bookingId,
-        customerId: updatedBooking.customerId,
-        driverId: updatedBooking.driverId ?? undefined,
-        status: data.status
-      });
-
-      return updatedBooking;
-    } catch (error) {
-      this.logger.error(`Failed to update booking status from trip service:`, error);
-      throw error;
-    }
-  }
-
-  // ✅ NEW: Message handler for trip completion
-  @MessagePattern('booking.complete')
-  async completeBookingFromTrip(data: {
-    bookingId: string,
-    completedAt: Date
-  }) {
-    try {
-      this.logger.log(`Completing booking ${data.bookingId} from trip service`);
-
-      const updatedBooking = await this.bookingRepository.update(data.bookingId, {
+      const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.COMPLETED,
-        completedAt: data.completedAt
+        completedAt: completedAt
       });
 
       // Publish booking completed event
       await this.messagingService.publish(BookingEvents.COMPLETED, {
-        bookingId: data.bookingId,
+        bookingId: bookingId,
         customerId: updatedBooking.customerId,
         tripDetails: {
-          completedAt: data.completedAt,
+          completedAt: completedAt,
           status: 'COMPLETED'
         }
       });
 
       // Legacy notification
       this.notificationServiceClient.emit('booking.completed', {
-        bookingId: data.bookingId,
+        bookingId: bookingId,
         customerId: updatedBooking.customerId,
         driverId: updatedBooking.driverId
       });

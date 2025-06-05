@@ -7,15 +7,15 @@ export class FindMatchDto {
   customerId?: string | null;
 
   @IsNumber()
-  @Transform(({ value }) => parseFloat(value)) // ✅ Ensure number conversion
+  @Transform(({ value }) => parseFloat(value)) // Ensure number conversion
   latitude: number;
 
   @IsNumber()
-  @Transform(({ value }) => parseFloat(value)) // ✅ Ensure number conversion
+  @Transform(({ value }) => parseFloat(value)) // Ensure number conversion
   longitude: number;
 
   @IsNumber()
-  @Transform(({ value }) => parseFloat(value)) // ✅ Ensure number conversion
+  @Transform(({ value }) => parseFloat(value)) // Ensure number conversion
   radius: number = 1;
 
   @IsOptional()

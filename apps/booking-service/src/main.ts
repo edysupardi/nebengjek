@@ -1,10 +1,11 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { BookingModule } from './booking.module';
+import { BookingModule } from '@app/booking/booking.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { ResponseInterceptor } from '@app/common/interceptors/response.interceptor';
 import { Logger } from 'nestjs-pino';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(BookingModule);
@@ -33,8 +34,25 @@ async function bootstrap() {
   const excludedPaths = [''];
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
 
-  const port = process.env.BOOKING_PORT || 3002;
-  logger.log(`Booking service is running on port ${port}`);
-  await app.listen(port);
+  const httpPort = process.env.BOOKING_PORT || 3002;
+  const tcpPort = Number(process.env.BOOKING_TCP_PORT) || 8005;
+
+  logger.log(`Booking service is running on port ${httpPort}`);
+  await app.listen(httpPort);
+
+  // Create TCP microservice
+  const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(
+    BookingModule,
+    {
+      transport: Transport.TCP,
+      options: {
+        host: '0.0.0.0',
+        port: tcpPort,
+      },
+    },
+  );
+
+  await microservice.listen();
+  console.log(`Booking TCP microservice running on port ${tcpPort}`);
 }
 bootstrap();

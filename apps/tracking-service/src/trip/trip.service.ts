@@ -6,11 +6,11 @@ import { EndTripDto } from '@app/trip/dto/end-trip.dto';
 import { UpdateTripLocationDto } from '@app/trip/dto/update-trip-location.dto';
 import { TripGateway } from '@app/trip/trip.gateway';
 import { EventPattern, MessagePattern, ClientProxy } from '@nestjs/microservices';
-import { TripStatus, BookingStatus } from '@app/common';
+import { TripStatus } from '@app/common';
 import * as PriceConstant from '@app/common/constants/price.constant';
 import { MessagingService } from '@app/messaging';
 import { TripEvents } from '@app/messaging/events/event-types';
-import { firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, retry, throwError, timeout } from 'rxjs';
 
 @Injectable()
 export class TripService {
@@ -62,21 +62,42 @@ export class TripService {
           driverId,
           startTime: trip.startTime,
           locations: [],
-          totalDistance: 0,
+          
+          // Dual distance tracking
+          totalDistance: 0,              // Actual GPS distance
+          billableKm: 0,                 // 1km chunks billed
+          accumulatedForBilling: 0,      // Accumulator for next 1km
+          
+          // Cost tracking
+          currentCost: 0,
           lastUpdateTime: new Date().toISOString(),
         }),
         'EX',
-        86400 // 24 hours expiry
+        86400
       );
 
-      // ⚡ Update booking status to ONGOING via message
-      await firstValueFrom(
-        this.bookingServiceClient.send('booking.updateStatus', {
-          bookingId: startTripDto.bookingId,
-          status: BookingStatus.ONGOING,
-          startedAt: new Date()
-        })
-      );
+      try {
+        this.logger.log(`Attempting to update booking ${startTripDto.bookingId} status to ONGOING`);
+        
+        const updateResult = await firstValueFrom(
+          this.bookingServiceClient.send('booking.ongoingStatus', {
+            bookingId: startTripDto.bookingId,
+            userId: driverId,
+            startedAt: new Date()
+          }).pipe(
+            timeout(10000) // 10 second timeout
+          )
+        );
+        
+        this.logger.log(`Booking status updated successfully:`, updateResult);
+        
+      } catch (bookingError: unknown) {
+        let errorMesssage = bookingError instanceof Error ? bookingError.message : 'Unknown error';
+        this.logger.error(`Booking service communication error: ${String(bookingError)}`, errorMesssage);
+
+        // Don't fail the whole operation - trip can continue without booking update
+        this.logger.warn(`Trip ${trip.id} created but booking status update failed. Continuing...`);
+      }
 
       // Get booking details for event publishing
       const tripRecord = await this.tripRepository.findById(trip.id);
@@ -131,21 +152,51 @@ export class TripService {
       trip.locations.push(newLocation);
       trip.lastUpdateTime = new Date().toISOString();
 
-      // Calculate distance from last location if exists
+      // ENHANCED DISTANCE CALCULATION WITH 1KM BILLING
       if (trip.locations.length > 1) {
         const lastLocation = trip.locations[trip.locations.length - 2];
-        this.logger.log(`Calculating distance from last location to new location`);
-        const distance = this.calculateDistance(
+        const segmentDistance = this.calculateDistance(
           lastLocation.latitude,
           lastLocation.longitude,
           newLocation.latitude,
           newLocation.longitude
         );
-        this.logger.log(`Distance calculated: ${distance} km`);
 
-        // Only add distance if movement is significant (> 10 meters)
-        if (distance > 0.01) {
-          trip.totalDistance += distance;
+        // Only process significant movement (> 10 meters)
+        if (segmentDistance > 0.01) {
+          
+          // 1. Track ACTUAL GPS distance (for accuracy & transparency)
+          trip.totalDistance = (trip.totalDistance || 0) + segmentDistance;
+          
+          // 2. Accumulate for 1KM BILLING CHUNKS (assessment requirement)
+          trip.accumulatedForBilling = (trip.accumulatedForBilling || 0) + segmentDistance;
+          
+          // 3. Check if we reached 1km billing threshold
+          if (trip.accumulatedForBilling >= 1.0) {
+            // Calculate how many complete kilometers to bill
+            const completedKm = Math.floor(trip.accumulatedForBilling);
+            
+            // Add to billable distance
+            trip.billableKm = (trip.billableKm || 0) + completedKm;
+            
+            // Keep remainder for next accumulation
+            trip.accumulatedForBilling = trip.accumulatedForBilling - completedKm;
+            
+            // Update current cost based on billable kilometers
+            const newCost = trip.billableKm * PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM;
+            trip.currentCost = newCost;
+            
+            // Log billing milestone
+            this.logger.log(`Trip ${tripId}: Billing milestone - ${trip.billableKm}km completed, Cost: Rp${newCost}`);
+            
+            // Optional: Send billing notification to customer
+            // this.tripGateway.sendBillingUpdate(tripId, {
+            //   message: `${completedKm}km completed`,
+            //   billableDistance: trip.billableKm,
+            //   currentCost: newCost,
+            //   timestamp: new Date().toISOString()
+            // });
+          }
         }
       }
 
@@ -164,13 +215,28 @@ export class TripService {
         updateLocationDto.longitude
       );
 
-      // Send real-time update via WebSocket
+      // Enhanced WebSocket update with billing transparency
       this.tripGateway.sendLocationUpdate(tripId, {
         latitude: updateLocationDto.latitude,
         longitude: updateLocationDto.longitude,
-        totalDistance: trip.totalDistance,
+        
+        // Dual distance tracking
+        distance: {
+          actual: Number((trip.totalDistance || 0).toFixed(3)),        // GPS accuracy
+          billable: trip.billableKm || 0,                              // 1km chunks billed
+          accumulated: Number((trip.accumulatedForBilling || 0).toFixed(3)), // Progress to next km
+          nextBillingIn: Number((1.0 - (trip.accumulatedForBilling || 0)).toFixed(3)) // Distance until next billing
+        },
+        
+        cost: {
+          current: trip.currentCost || 0,
+          perKm: PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM,
+          billingMethod: "1km chunks"
+        },
+        
         timestamp: new Date().toISOString(),
       });
+
 
       // Get booking data to access customerId for messaging
       const tripRecord = await this.tripRepository.findById(tripId);
@@ -190,6 +256,18 @@ export class TripService {
         tripId,
         totalDistance: trip.totalDistance,
         currentLocation: newLocation,
+
+        distance: {
+          actual: Number((trip.totalDistance || 0).toFixed(3)),
+          billable: trip.billableKm || 0,
+          accumulated: Number((trip.accumulatedForBilling || 0).toFixed(3)),
+          nextMilestone: Number((1.0 - (trip.accumulatedForBilling || 0)).toFixed(3))
+        },
+
+        cost: {
+          current: trip.currentCost || 0,
+          lastUpdate: trip.lastUpdateTime
+        }
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -200,7 +278,7 @@ export class TripService {
 
   async endTrip(tripId: string, driverId: string, endTripDto: EndTripDto) {
     try {
-      this.logger.log(`Driver ${driverId} ending trip ${tripId}`);
+      this.logger.log(`Driver ${driverId} try ending trip ${tripId}`);
 
       // Get trip data from Redis
       const tripData = await this.redis.get(`trip:${tripId}`);
@@ -216,98 +294,135 @@ export class TripService {
         throw new UnauthorizedException('You are not authorized to end this trip');
       }
 
-      // Get trip record from database to access booking info
-      const tripRecord = await this.tripRepository.findById(tripId);
-      if (!tripRecord) {
-        throw new NotFoundException('Trip record not found in database');
+      // FINAL BILLING CALCULATION
+      let finalBillableKm = trip.billableKm || 0;
+      
+      // Handle remaining accumulated distance
+      if ((trip.accumulatedForBilling || 0) > 0) {
+        // Bill remaining distance as 1 full kilometer (round up)
+        finalBillableKm += 1;
+        this.logger.log(`Trip ${tripId}: Final billing - added 1km for remaining ${trip.accumulatedForBilling}km`);
       }
 
-      // Calculate final cost
-      const costCalculation = this.calculateFinalCost(trip.totalDistance, endTripDto.discountPercentage || 0);
+      // Calculate final costs using existing schema
+      const basePrice = finalBillableKm * PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM;
+      const discountAmount = Math.round((basePrice * (endTripDto.discountPercentage || 0)) / 100);
+      const finalPrice = basePrice - discountAmount;
+      const platformFeeAmount = Math.round(finalPrice * (PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE / 100));
+      const driverAmount = finalPrice - platformFeeAmount;
 
-      // Update trip in database
+      // Update trip in database with ACTUAL GPS distance
       const updatedTrip = await this.tripRepository.update(tripId, {
         endTime: new Date(),
-        distance: trip.totalDistance,
-        basePrice: costCalculation.basePrice,
-        discountAmount: costCalculation.discountAmount,
+        distance: trip.totalDistance || 0,        // Store actual GPS distance
+        basePrice: basePrice,                     // Based on billable km
+        discountAmount: discountAmount,
         discountPercentage: endTripDto.discountPercentage || 0,
-        finalPrice: costCalculation.finalPrice,
-        platformFeePercentage: this.PLATFORM_FEE_PERCENTAGE * 100,
-        platformFeeAmount: costCalculation.platformFeeAmount,
-        driverAmount: costCalculation.driverAmount,
+        finalPrice: finalPrice,
+        platformFeePercentage: PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE,
+        platformFeeAmount: platformFeeAmount,
+        driverAmount: driverAmount,
         status: TripStatus.COMPLETED,
       });
 
-      // ⚡ Complete booking via message
-      await firstValueFrom(
-        this.bookingServiceClient.send('booking.complete', {
-          bookingId: tripRecord.bookingId,
-          completedAt: new Date()
-        })
-      );
+      // Get trip record for booking completion
+      const tripRecord = await this.tripRepository.findById(tripId);
+      if (!tripRecord?.booking) {
+        throw new Error('Booking information not found');
+      }
 
-      // ⚡ Process payments
+      // Complete booking
       try {
-        if (!tripRecord.booking) {
-          throw new Error('Booking information not found for this trip');
-        }
+        this.logger.log(`Attempting to completing booking ${tripRecord.bookingId}`);
 
+        await firstValueFrom(
+          this.bookingServiceClient.send('booking.complete', {
+            bookingId: tripRecord.bookingId,
+            completedAt: new Date()
+          })
+        );
+
+        this.logger.log(`Booking status successfully update to complete, id: ${tripRecord.bookingId}`);
+      } catch (bookingError: unknown) {
+        let errorMesssage = bookingError instanceof Error ? bookingError.message : 'Unknown error';
+        this.logger.error(`Booking service communication error: ${String(bookingError)}`, errorMesssage);
+      }
+
+      // Process payment
+      try {
+        this.logger.log(`Attempting to payment booking ${tripRecord.bookingId}`);
+        
         await firstValueFrom(
           this.paymentServiceClient.send('payment.processTrip', {
             bookingId: tripRecord.bookingId,
             tripId: tripId,
             customerId: tripRecord.booking.customerId,
             driverId: driverId,
-            totalAmount: costCalculation.finalPrice,
-            driverAmount: costCalculation.driverAmount,
-            platformFee: costCalculation.platformFeeAmount,
-            tripDistance: trip.totalDistance
+            totalAmount: finalPrice,
+            driverAmount: driverAmount,
+            platformFee: platformFeeAmount,
+            actualDistance: trip.totalDistance || 0,
+            billableKm: finalBillableKm
           })
         );
-        this.logger.log(`Payment processed successfully for trip ${tripId}`);
-      } catch (paymentError) {
-        this.logger.error(`Payment processing failed for trip ${tripId}:`, paymentError);
-        // Note: Trip is still completed even if payment fails - will be handled by payment service
+        
+        this.logger.log(`Payment for booking ${tripRecord.bookingId} successfully:`);
+      } catch (paymentError: unknown) {
+        let errorMesssage = paymentError instanceof Error ? paymentError.message : 'Unknown error';
+        this.logger.error(`Payment service communication error: ${String(paymentError)}`, errorMesssage);
       }
 
       // Clean up Redis
       await this.redis.del(`trip:${tripId}`);
 
-      // Send trip status update via WebSocket
+      // Send final update via WebSocket
       this.tripGateway.sendTripStatusUpdate(tripId, {
         status: 'COMPLETED',
-        finalPrice: costCalculation.finalPrice,
-        totalDistance: trip.totalDistance,
+        finalPrice: finalPrice,
+        actualDistance: trip.totalDistance || 0,
+        billableKm: finalBillableKm,
+        driverDiscount: endTripDto.discountPercentage || 0
       });
 
       // Publish trip ended event
-      if (tripRecord.booking?.customerId) {
-        await this.messagingService.publish(TripEvents.ENDED, {
-          tripId,
-          bookingId: tripRecord.bookingId,
-          driverId,
-          customerId: tripRecord.booking.customerId,
-          distance: trip.totalDistance,
-          fare: costCalculation.finalPrice
-        });
-      }
+      await this.messagingService.publish(TripEvents.ENDED, {
+        tripId,
+        bookingId: tripRecord.bookingId,
+        driverId,
+        customerId: tripRecord.booking.customerId,
+        actualDistance: trip.totalDistance || 0,
+        billableKm: finalBillableKm,
+        fare: finalPrice
+      });
 
-      this.logger.log(`Trip ended successfully: ${tripId}, Distance: ${trip.totalDistance}km, Final price: ${costCalculation.finalPrice}`);
+      this.logger.log(`Trip completed: ${tripId}, GPS: ${trip.totalDistance}km, Billed: ${finalBillableKm}km, Final: Rp${finalPrice}`);
 
       return {
         ...updatedTrip,
-        costBreakdown: costCalculation,
+        
+        // Enhanced trip summary
         tripSummary: {
-          distance: trip.totalDistance,
+          actualGPSDistance: Number((trip.totalDistance || 0).toFixed(3)),
+          billableDistance: finalBillableKm,
+          billingMethod: "1km chunks (assessment compliant)",
           duration: this.calculateTripDuration(trip.startTime, new Date()),
           startTime: trip.startTime,
           endTime: new Date(),
+        },
+        
+        // Transparent cost breakdown
+        costBreakdown: {
+          calculation: `${finalBillableKm}km × Rp${PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM}`,
+          basePrice: basePrice,
+          driverDiscount: `${endTripDto.discountPercentage || 0}% = -Rp${discountAmount}`,
+          subtotal: finalPrice,
+          platformFee: `${PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE}% = Rp${platformFeeAmount}`,
+          driverEarnings: driverAmount
         }
       };
+
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to end trip: ${errorMessage}`, error);
+      this.logger.error('Failed to end trip:', error);
       throw error;
     }
   }
@@ -474,7 +589,7 @@ export class TripService {
     }
   }
 
-  // ✅ Message handler for booking service (legacy compatibility)
+  // Message handler for booking service (legacy compatibility)
   @MessagePattern('trip.calculateFinalCost')
   async calculateFinalCostMessage(data: { bookingId: string }) {
     try {
@@ -540,7 +655,7 @@ export class TripService {
     }
   }
 
-  // ✅ Event handler for trip completion (legacy compatibility)
+  // Event handler for trip completion (legacy compatibility)
   @EventPattern('trip.complete')
   async handleTripCompleteEvent(data: { bookingId: string, tripDetails: any }) {
     try {

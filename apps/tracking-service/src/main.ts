@@ -34,7 +34,7 @@ async function bootstrap() {
   const excludedPaths = [''];
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
 
-  // ✅ ADD WebSocket adapter
+  // ADD WebSocket adapter
   app.useWebSocketAdapter(new IoAdapter(app));
 
   const port = process.env.TRACKING_PORT || 3003;

@@ -11,7 +11,10 @@ import { JwtAuthGuard } from '@app/common';
 
 @Module({
   imports: [
-    ConfigModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
     RedisModule.forRoot(),
     forwardRef(() => UserModule),
     JwtModule.registerAsync({

@@ -5,14 +5,15 @@ import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.d
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
-import { Roles, UserRole } from '@app/common';
+import { Booking, Roles, UserRole } from '@app/common';
+import { MessagePattern } from '@nestjs/microservices';
 
 @Controller('bookings')
-@UseGuards(TrustedGatewayGuard)
 export class BookingController {
   private readonly logger = new Logger(BookingController.name);
   constructor(private readonly bookingService: BookingService) { }
 
+  @UseGuards(TrustedGatewayGuard)
   @Post()
   async createBooking(
     @CurrentUser() user: any,
@@ -22,12 +23,14 @@ export class BookingController {
     return this.bookingService.createBooking(user.userId, createBookingDto);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Get(':bookingId')
   async getBookingDetails(@Param('bookingId') bookingId: string) {
     this.logger.log(`Fetching booking details for booking ID ${bookingId}`);
     return this.bookingService.getBookingDetails(bookingId);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Get()
   async getUserBookings(
     @CurrentUser() user: any,
@@ -39,6 +42,7 @@ export class BookingController {
     return this.bookingService.getUserBookings(user.userId, status, page, limit);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Put(':bookingId/status')
   async updateBookingStatus(
     @CurrentUser() user: any,
@@ -49,6 +53,7 @@ export class BookingController {
     return this.bookingService.updateBookingStatus(bookingId, user.userId, updateStatusDto.status);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Put(':bookingId/accept')
   @Roles(UserRole.DRIVER)
   async acceptBooking(
@@ -59,6 +64,7 @@ export class BookingController {
     return this.bookingService.acceptBooking(bookingId, user.userId);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Put(':bookingId/reject')
   @Roles(UserRole.DRIVER)
   async rejectBooking(
@@ -69,6 +75,7 @@ export class BookingController {
     return this.bookingService.rejectBooking(bookingId, user.userId);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Put(':bookingId/cancel')
   async cancelBooking(
     @CurrentUser() user: any,
@@ -78,6 +85,7 @@ export class BookingController {
     return this.bookingService.cancelBooking(bookingId, user.userId);
   }
 
+  @UseGuards(TrustedGatewayGuard)
   @Delete(':bookingId')
   async deleteBooking(
     @CurrentUser() user: any,
@@ -85,5 +93,44 @@ export class BookingController {
   ) {
     this.logger.log(`Deleting booking for booking ID ${bookingId} by user ${user.userId}`);
     return this.bookingService.deleteBooking(bookingId, user.userId);
+  }
+
+  @MessagePattern('booking.ongoingStatus')
+  async updateBookingStatusTcp(data: { bookingId: string, userId: string, startedAt?: Date }) {
+    try {
+      this.logger.log(`[TCP CONTROLLER] Updating booking ${data.bookingId} to ONGOING`);
+      
+      const result = await this.bookingService.updateBookingStatus(data.bookingId, data.userId, BookingStatus.ONGOING, data.startedAt);
+      
+      return {
+        success: true,
+        message: 'Booking updated to ONGOING',
+        data: result
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`[TCP CONTROLLER] Error: ${errorMessage}`, error);
+    }
+  }
+
+  @MessagePattern('booking.complete')
+  async completeBooking(data: { bookingId: string, completedAt: Date }) {
+    try {
+      this.logger.log(`[TCP CONTROLLER] Completing booking ${data.bookingId}`);
+      
+      const result = await this.bookingService.completeBookingFromTrip(
+        data.bookingId, 
+        data.completedAt
+      );
+      
+      return {
+        success: true,
+        message: 'Booking completed',
+        data: result
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`[TCP CONTROLLER] Error: ${errorMessage}`, error);
+    }
   }
 }
