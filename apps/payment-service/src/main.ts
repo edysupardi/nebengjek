@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { ResponseInterceptor } from '@app/common/interceptors/response.interceptor';
 import { Logger } from 'nestjs-pino';
 import { PaymentModule } from './payment.module';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(PaymentModule);
@@ -33,9 +34,25 @@ async function bootstrap() {
   const excludedPaths = [''];
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
   
-  const port = process.env.PAYMENT_PORT || 3005;
-  console.log(`Matching service running on port ${port}`);
-  await app.listen(port);
-  console.log(`Payment Service is running on port ${port}`);
+  const httpPort = process.env.PAYMENT_PORT || 3005;
+  const tcpPort = Number(process.env.PAYMENT_TCP_PORT) || 8007;
+
+  await app.listen(httpPort);
+  console.log(`Payment Service is running on port ${httpPort}`);
+
+  // Create TCP microservice
+  const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(
+    PaymentModule,
+    {
+      transport: Transport.TCP,
+      options: {
+        host: '0.0.0.0',
+        port: tcpPort,
+      },
+    },
+  );
+
+  await microservice.listen();
+  console.log(`Payment TCP microservice running on port ${tcpPort}`);
 }
 bootstrap();

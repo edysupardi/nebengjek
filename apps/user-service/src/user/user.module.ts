@@ -9,6 +9,10 @@ import { PrismaService } from '@app/database';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
     forwardRef(() => AuthModule),
     HealthModule.forRootAsync({
       imports: [ConfigModule],

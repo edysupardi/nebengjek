@@ -6,7 +6,6 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { BookingNotification, NearbyDriver } from '@app/common';
-import * as PriceConstant from '@app/common/constants/price.constant';
 import { MessagingService } from '@app/messaging';
 import { BookingEvents } from '@app/messaging/events/event-types';
 
@@ -17,24 +16,23 @@ export class BookingService {
   constructor(
     private readonly bookingRepository: BookingRepository,
     private readonly httpService: HttpService,
-    @Inject('TRACKING_SERVICE') private trackingServiceClient: ClientProxy,
     @Inject('NOTIFICATION_SERVICE') private notificationServiceClient: ClientProxy,
     @Inject('MATCHING_SERVICE') private matchingServiceClient: ClientProxy,
     @Inject('REDIS_CLIENT') private redis: any,
     private readonly messagingService: MessagingService
-  ) {}
+  ) { }
 
   async createBooking(userId: string, createBookingDto: CreateBookingDto) {
     try {
       this.logger.log(`Creating booking for customer ${userId}`);
-      
-      // First check if user already has active booking
+
+      // Check if user already has active booking
       const activeBooking = await this.bookingRepository.findActiveBookingByCustomer(userId);
       if (activeBooking) {
         this.logger.warn(`User ${userId} already has an active booking`);
         throw new BadRequestException('You already have an active booking');
       }
-  
+
       // Create booking with PENDING status
       const booking = await this.bookingRepository.create({
         customerId: userId,
@@ -44,7 +42,7 @@ export class BookingService {
         destinationLng: createBookingDto.destinationLongitude,
         status: BookingStatus.PENDING,
       });
-  
+
       // Store booking in Redis with retry
       await this.executeWithRetry(async () => {
         await this.redis.set(
@@ -67,7 +65,7 @@ export class BookingService {
         );
       });
 
-      // Publish booking.created event through messaging service
+      // Publish booking.created event
       await this.messagingService.publish(BookingEvents.CREATED, {
         bookingId: booking.id,
         customerId: userId,
@@ -77,8 +75,8 @@ export class BookingService {
         destinationLongitude: createBookingDto.destinationLongitude,
         customerName: booking.customer ? booking.customer.name : 'Customer',
       });
-  
-      // Find nearby drivers with retry - keep this for legacy compatibility
+
+      // Find nearby drivers
       try {
         const nearbyDriversResponse = await this.executeWithRetry(async () => {
           return await firstValueFrom(
@@ -89,14 +87,20 @@ export class BookingService {
             })
           );
         });
-        
-        // Send notifications to nearby drivers through legacy service
+
+        // Send notifications to nearby drivers
         if (nearbyDriversResponse && nearbyDriversResponse.drivers && nearbyDriversResponse.drivers.length > 0) {
+          this.logger.log(`Found ${nearbyDriversResponse.drivers.length} nearby drivers for booking ${booking.id}`);
           nearbyDriversResponse.drivers.forEach((driver: NearbyDriver) => {
             this.notificationServiceClient.emit('booking.new', {
               bookingId: booking.id,
-              driverId: driver.driverId,
+              driverId: driver.userId,
+              customerId: userId,
               distance: driver.distance,
+              pickupLocation: {
+                latitude: createBookingDto.pickupLatitude,
+                longitude: createBookingDto.pickupLongitude,
+              }
             } as BookingNotification);
           });
         } else {
@@ -105,9 +109,8 @@ export class BookingService {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         this.logger.error(`Failed to find nearby drivers: ${errorMessage}`, error);
-        // We still return the booking even if we can't find drivers
       }
-  
+
       return booking;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -123,7 +126,7 @@ export class BookingService {
         this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
-      
+
       return booking;
     } catch (error) {
       this.logger.error(`Failed to get booking details for ${bookingId}:`, error);
@@ -136,8 +139,7 @@ export class BookingService {
       const skip = (page - 1) * limit;
       const bookings = await this.bookingRepository.findByUser(userId, status, skip, limit);
       const total = await this.bookingRepository.countByUser(userId, status);
-      this.logger.log(`Total bookings found: ${total}`);
-      
+
       return {
         data: bookings,
         meta: {
@@ -153,7 +155,7 @@ export class BookingService {
     }
   }
 
-  async updateBookingStatus(bookingId: string, userId: string, status: BookingStatus) {
+  async updateBookingStatus(bookingId: string, userId: string, status: BookingStatus, updatedAt?: Date) {
     try {
       // First check if booking exists
       const booking = await this.bookingRepository.findById(bookingId);
@@ -172,15 +174,29 @@ export class BookingService {
       this.validateStatusTransition(booking.status, status, userId, booking);
 
       // Update booking status
-      const updatedBooking = await this.bookingRepository.update(bookingId, { status });
+      const updateData: any = { status };
+      const updateDateAt = updatedAt || new Date();
+      switch (status) {
+        case BookingStatus.ACCEPTED:
+          updateData.acceptedAt = updateDateAt;
+          break;
+        case BookingStatus.REJECTED:
+          updateData.rejectedAt = updateDateAt;
+          break;
+        case BookingStatus.CANCELLED:
+          updateData.cancelledAt = updateDateAt;
+          break;
+        case BookingStatus.ONGOING:
+          updateData.startedAt = updateDateAt;
+          break;
+        case BookingStatus.COMPLETED:
+          updateData.completedAt = updateDateAt;
+          break;
+      }
+      const updatedBooking = await this.bookingRepository.update(bookingId, updateData);
 
       // Notify relevant parties
       this.notifyStatusUpdate(updatedBooking);
-
-      // If status is COMPLETED, trigger a trip completion in Tracking Service
-      if (status === BookingStatus.COMPLETED) {
-        // Implement trip completion logic
-      }
 
       return updatedBooking;
     } catch (error) {
@@ -196,16 +212,16 @@ export class BookingService {
         this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
-  
+
       if (booking.status !== BookingStatus.PENDING) {
         this.logger.warn(`Cannot accept booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(`Booking is already ${booking.status}`);
       }
-  
+
       const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.ACCEPTED,
         driverId,
-        acceptedAt: new Date() // Timestamp when booking was accepted
+        acceptedAt: new Date()
       });
 
       // Publish to messaging service
@@ -216,16 +232,16 @@ export class BookingService {
         driverName: updatedBooking.driver?.name || 'Driver',
         driverLatitude: updatedBooking.driver?.driverProfile?.lastLatitude || 0,
         driverLongitude: updatedBooking.driver?.driverProfile?.lastLongitude || 0,
-        estimatedArrivalTime: 0 // Calculate ETA if possible
+        estimatedArrivalTime: 0
       });
-  
-      // Keep legacy notification for backward compatibility
+
+      // Legacy notification for backward compatibility
       this.notificationServiceClient.emit('booking.accepted', {
         bookingId,
         customerId: booking.customerId,
         driverId,
       });
-  
+
       return updatedBooking;
     } catch (error) {
       this.logger.error(`Failed to accept booking ${bookingId}:`, error);
@@ -240,23 +256,20 @@ export class BookingService {
         this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
-  
+
       if (booking.status !== BookingStatus.PENDING) {
         this.logger.warn(`Cannot reject booking ${bookingId} with status ${booking.status}`);
         throw new BadRequestException(`Cannot reject booking with status ${booking.status}`);
       }
-  
+
       // Update booking with rejected timestamp
       await this.bookingRepository.update(bookingId, {
         rejectedAt: new Date()
       });
-  
+
       // Store driver rejection in Redis to avoid re-matching
       await this.redis.sadd(`booking:${bookingId}:rejected-drivers`, driverId);
-  
-      // Try to find another driver
-      // This would be handled by Matching Service
-  
+
       return { message: 'Booking rejected successfully' };
     } catch (error) {
       this.logger.error(`Failed to reject booking ${bookingId}:`, error);
@@ -271,7 +284,7 @@ export class BookingService {
         this.logger.warn(`Booking ${bookingId} not found`);
         throw new NotFoundException('Booking not found');
       }
-  
+
       // Only allow cancellation for PENDING or ACCEPTED bookings
       if (
         booking.status !== BookingStatus.PENDING &&
@@ -282,21 +295,21 @@ export class BookingService {
           `Cannot cancel booking with status ${booking.status}`
         );
       }
-  
+
       // Verify that user is authorized to cancel
       if (booking.customerId !== userId && booking.driverId !== userId) {
         this.logger.warn(`User ${userId} is not authorized to cancel booking ${bookingId}`);
         throw new UnauthorizedException('You are not authorized to cancel this booking');
       }
-  
+
       const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.CANCELLED,
-        cancelledAt: new Date() // Timestamp when booking was cancelled
+        cancelledAt: new Date()
       });
 
       // Determine who cancelled the booking
       const cancelledBy = userId === booking.customerId ? 'customer' : 'driver';
-  
+
       // Publish to messaging service
       await this.messagingService.publish(BookingEvents.CANCELLED, {
         bookingId,
@@ -304,8 +317,8 @@ export class BookingService {
         driverId: booking.driverId ?? undefined,
         cancelledBy
       });
-  
-      // Keep legacy notifications for backward compatibility
+
+      // Legacy notifications for backward compatibility
       if (userId === booking.customerId) {
         // Customer cancelled, notify driver if assigned
         if (booking.driverId) {
@@ -323,7 +336,7 @@ export class BookingService {
           cancelledBy: 'driver',
         });
       }
-  
+
       return updatedBooking;
     } catch (error) {
       this.logger.error(`Failed to cancel booking ${bookingId}:`, error);
@@ -365,63 +378,73 @@ export class BookingService {
     }
   }
 
+  async completeBookingFromTrip(bookingId: string, completedAt: Date) {
+    try {
+      this.logger.log(`Completing booking ${bookingId} from trip service`);
+
+      const updatedBooking = await this.bookingRepository.update(bookingId, {
+        status: BookingStatus.COMPLETED,
+        completedAt: completedAt
+      });
+
+      // Publish booking completed event
+      await this.messagingService.publish(BookingEvents.COMPLETED, {
+        bookingId: bookingId,
+        customerId: updatedBooking.customerId,
+        tripDetails: {
+          completedAt: completedAt,
+          status: 'COMPLETED'
+        }
+      });
+
+      // Legacy notification
+      this.notificationServiceClient.emit('booking.completed', {
+        bookingId: bookingId,
+        customerId: updatedBooking.customerId,
+        driverId: updatedBooking.driverId
+      });
+
+      return updatedBooking;
+    } catch (error) {
+      this.logger.error(`Failed to complete booking from trip service:`, error);
+      throw error;
+    }
+  }
+
   private validateStatusTransition(
     currentStatus: BookingStatus | any,
     newStatus: BookingStatus | any,
     userId: string,
     booking: any
   ) {
-    // Define valid transitions based on current status and user role
     const isCustomer = userId === booking.customerId;
     const isDriver = userId === booking.driverId;
 
     switch (currentStatus) {
       case BookingStatus.PENDING:
-        // Customer can cancel, driver can accept or reject
         if (isCustomer && newStatus !== BookingStatus.CANCELLED) {
-          this.logger.warn(
-            `Customer can only cancel a pending booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
-          );
           throw new BadRequestException('Customer can only cancel a pending booking');
         }
         if (isDriver && ![BookingStatus.ACCEPTED, BookingStatus.REJECTED].includes(newStatus)) {
-          this.logger.warn(
-            `Driver can only accept or reject a pending booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
-          );
           throw new BadRequestException('Driver can only accept or reject a pending booking');
         }
         break;
       case BookingStatus.ACCEPTED:
-        // Both can cancel, driver can start trip (ONGOING)
         if (isCustomer && newStatus !== BookingStatus.CANCELLED) {
-          this.logger.warn(
-            `Customer can only cancel an accepted booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
-          );
           throw new BadRequestException('Customer can only cancel an accepted booking');
         }
         if (isDriver && ![BookingStatus.CANCELLED, BookingStatus.ONGOING].includes(newStatus)) {
-          this.logger.warn(
-            `Driver can only cancel or start an accepted booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
-          );
           throw new BadRequestException('Driver can only cancel or start an accepted booking');
         }
         break;
       case BookingStatus.ONGOING:
-        // Only driver can complete
         if (!isDriver || newStatus !== BookingStatus.COMPLETED) {
-          this.logger.warn(
-            `Only driver can complete an ongoing booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
-          );
-          throw new BadRequestException('Only the driver can complete an ongoing booking');
+          throw new BadRequestException('Only driver can complete an ongoing booking');
         }
         break;
       case BookingStatus.COMPLETED:
       case BookingStatus.CANCELLED:
       case BookingStatus.REJECTED:
-        // No further status changes allowed
-        this.logger.warn(
-          `Cannot change status of a completed/cancelled/rejected booking, current status: ${currentStatus} new status: ${newStatus} userId: ${userId}`
-        );
         throw new BadRequestException(`Cannot change status of a ${currentStatus} booking`);
     }
   }
@@ -439,151 +462,6 @@ export class BookingService {
     this.logger.log(`Notified ${event} for booking ${booking.id}`);
   }
 
-  async startTrip(bookingId: string, driverId: string) {
-    try {
-      const booking = await this.bookingRepository.findById(bookingId);
-      if (!booking) {
-        throw new NotFoundException('Booking not found');
-      }
-      
-      if (booking.driverId !== driverId) {
-        throw new UnauthorizedException('You are not the driver for this booking');
-      }
-      
-      if (booking.status !== BookingStatus.ACCEPTED) {
-        throw new BadRequestException(`Cannot start trip with status ${booking.status}`);
-      }
-      
-      // Update status to ONGOING and add timestamp
-      const updatedBooking = await this.bookingRepository.update(bookingId, {
-        status: BookingStatus.ONGOING,
-        startedAt: new Date()
-      });
-      
-      // Kirim perintah ke tracking service untuk mulai tracking
-      await firstValueFrom(
-        this.trackingServiceClient.emit('trip.start', {
-          bookingId: bookingId,
-          driverId: driverId,
-          customerId: booking.customerId,
-          pickupLocation: {
-            latitude: booking.pickupLat,
-            longitude: booking.pickupLng
-          }
-        })
-      );
-      
-      return updatedBooking;
-    } catch (error) {
-      this.logger.error(`Failed to start trip for booking ${bookingId}:`, error);
-      throw error;
-    }
-  }
-
-  async calculateFinalPrice(bookingId: string) {
-    try {
-      const booking = await this.bookingRepository.findById(bookingId);
-      if (!booking || booking.status !== BookingStatus.ONGOING) {
-        throw new BadRequestException('No active booking found');
-      }
-      
-      // Dapatkan total jarak dari tracking service
-      const tripDataResponse = await firstValueFrom(
-        this.trackingServiceClient.send('trip.getDistance', {
-          bookingId: bookingId
-        })
-      );
-      
-      const distanceInKm = tripDataResponse.totalDistanceKm;
-
-      const pricePerKm = PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM; // in IDR
-      const calculatedPrice = Math.round(distanceInKm * pricePerKm);
-
-      // Hitung fee platform (5%)
-      const platformFeePercentage = PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE / 100;
-      const platformFee = Math.round(calculatedPrice * platformFeePercentage);
-      const driverAmount = calculatedPrice - platformFee;
-      
-      // Simpan data harga sementara di Redis (belum final)
-      await this.redis.set(
-        `booking:${bookingId}:price`,
-        JSON.stringify({
-          distanceKm: distanceInKm,
-          basePrice: calculatedPrice,
-          platformFee: platformFee,
-          driverAmount: driverAmount,
-          timestamp: new Date().toISOString()
-        }),
-        'EX',
-        3600 // 1 hour expiry
-      );
-      
-      return {
-        bookingId,
-        distanceKm: distanceInKm,
-        calculatedPrice,
-        platformFee,
-        driverAmount
-      };
-    } catch (error) {
-      this.logger.error(`Failed to calculate price for booking ${bookingId}:`, error);
-      throw error;
-    }
-  }
-
-  async completeBooking(bookingId: string, driverId: string) {
-    try {
-      const booking = await this.bookingRepository.findById(bookingId);
-      if (!booking) {
-        throw new NotFoundException('Booking not found');
-      }
-  
-      if (booking.driverId !== driverId) {
-        throw new UnauthorizedException('You are not the driver for this booking');
-      }
-  
-      if (booking.status !== BookingStatus.ONGOING) {
-        throw new BadRequestException(
-          `Cannot complete booking with status ${booking.status}`
-        );
-      }
-      
-      // Dapatkan kalkulasi harga dari tracking service
-      const tripDataResponse = await firstValueFrom(
-        this.trackingServiceClient.send('trip.calculateFinalCost', {
-          bookingId: bookingId
-        })
-      );
-      
-      // Update booking ke COMPLETED dengan timestamp
-      const updatedBooking = await this.bookingRepository.update(bookingId, {
-        status: BookingStatus.COMPLETED,
-        completedAt: new Date()
-      });
-  
-      // Kirim notifikasi ke customer
-      this.notificationServiceClient.emit('booking.completed', {
-        bookingId,
-        customerId: booking.customerId,
-        tripDetails: tripDataResponse
-      });
-      
-      // Notify tracking service to stop tracking and update trip data
-      this.trackingServiceClient.emit('trip.complete', {
-        bookingId,
-        tripDetails: tripDataResponse
-      });
-  
-      return {
-        ...updatedBooking,
-        tripDetails: tripDataResponse
-      };
-    } catch (error) {
-      this.logger.error(`Failed to complete booking ${bookingId}:`, error);
-      throw error;
-    }
-  }
-
   private async executeWithRetry<T>(
     operation: () => Promise<T>,
     maxRetries = 3,
@@ -599,7 +477,6 @@ export class BookingService {
         lastError = error;
         if (attempt < maxRetries) {
           await new Promise(resolve => setTimeout(resolve, delay));
-          // Exponential backoff
           delay *= 2;
         }
       }

@@ -42,11 +42,11 @@ export class TripGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client ${client.id} left trip: ${tripId}`);
   }
 
-  sendLocationUpdate(tripId: string, location: any) {
-    this.server.to(`trip:${tripId}`).emit('locationUpdate', location);
+  sendLocationUpdate(tripId: string, data: any) {
+    this.server.to(`trip:${tripId}`).emit('locationUpdate', data);
   }
 
-  sendTripStatusUpdate(tripId: string, status: any) {
-    this.server.to(`trip:${tripId}`).emit('tripStatusUpdate', status);
+  sendTripStatusUpdate(tripId: string, data: any) {
+    this.server.to(`trip:${tripId}`).emit('tripStatusUpdate', data);
   }
 }

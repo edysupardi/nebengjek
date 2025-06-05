@@ -35,6 +35,7 @@ services:
       dockerfile: ./deployment/docker/booking-service.dockerfile
     ports:
       - "${BOOKING_PORT:-3002}:${BOOKING_PORT:-3002}"
+      - "${BOOKING_TCP_PORT:-8005}:${BOOKING_TCP_PORT:-8005}"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -42,12 +43,15 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - BOOKING_PORT=${BOOKING_PORT:-3002}
-      - TRACKING_SERVICE_HOST=${TRACKING_SERVICE_HOST:-tracking-service}
+      - BOOKING_TCP_PORT=${BOOKING_TCP_PORT:-8005}
       - TRACKING_PORT=${TRACKING_PORT:-3003}
       - NOTIFICATION_SERVICE_HOST=${NOTIFICATION_SERVICE_HOST:-notification-service}
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
+      # TCP client connections
+      - MATCHING_TCP_PORT=${MATCHING_TCP_PORT:-8006}
+      - NOTIFICATION_TCP_PORT=${MATCHING_TCP_PORT:-8004}
     volumes:
       - ./apps/booking-service:/app/apps/booking-service
       - ./libs:/app/libs
@@ -55,6 +59,10 @@ services:
     networks:
       - nebengjek-network
     restart: unless-stopped
+    depends_on:
+      - matching-service
+      - notification-service
+      - tracking-service
 
   # Tracking Service
   tracking-service:
@@ -72,6 +80,10 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - TRACKING_PORT=${TRACKING_PORT:-3003}
       - TRACKING_WS_PORT=${TRACKING_WS_PORT:-3060}
+      - BOOKING_SERVICE_HOST=${BOOKING_SERVICE_HOST:-booking-service}
+      - BOOKING_TCP_PORT=${BOOKING_TCP_PORT:-8005}
+      - PAYMENT_SERVICE_HOST=${PAYMENT_SERVICE_HOST:-payment-service}
+      - PAYMENT_TCP_PORT=${PAYMENT_TCP_PORT:-8005}
     volumes:
       - ./apps/tracking-service:/app/apps/tracking-service
       - ./libs:/app/libs
@@ -88,6 +100,7 @@ services:
     ports:
       - "${NOTIFICATION_PORT:-3004}:${NOTIFICATION_PORT:-3004}"
       - "${NOTIFICATION_WS_PORT:-3050}:${NOTIFICATION_WS_PORT:-3050}"
+      - "${NOTIFICATION_TCP_PORT:-3050}:${NOTIFICATION_TCP_PORT:-3050}"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -96,6 +109,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - NOTIFICATION_WS_PORT=${NOTIFICATION_WS_PORT:-3050}
+      - NOTIFICATION_TCP_PORT=8004
     volumes:
       - ./apps/notification-service:/app/apps/notification-service
       - ./libs:/app/libs
@@ -111,6 +125,7 @@ services:
       dockerfile: ./deployment/docker/payment-service.dockerfile
     ports:
       - "${PAYMENT_PORT:-3005}:${PAYMENT_PORT:-3005}"
+      - "${PAYMENT_TCP_PORT:-8007}:${PAYMENT_TCP_PORT:-8007}"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -118,6 +133,7 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - PAYMENT_PORT=${PAYMENT_PORT:-3005}
+      - PAYMENT_TCP_PORT=${PAYMENT_TCP_PORT:-8007}
     volumes:
       - ./apps/payment-service:/app/apps/payment-service
       - ./libs:/app/libs
@@ -133,6 +149,7 @@ services:
       dockerfile: ./deployment/docker/matching-service.dockerfile
     ports:
       - "${MATCHING_PORT:-3006}:${MATCHING_PORT:-3006}"
+      - "${MATCHING_TCP_PORT:-8006}:${MATCHING_TCP_PORT:-8006}"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -140,6 +157,7 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
+      - MATCHING_TCP_PORT=8006
     volumes:
       - ./apps/matching-service:/app/apps/matching-service
       - ./libs:/app/libs
@@ -172,19 +190,6 @@ services:
   #     - redis-data:/data
   #   networks:
   #     - nebengjek-network
-
-  # Database Administration (for external DB)
-  adminer:
-    image: adminer:latest
-    ports:
-      - "${ADMINER_PORT:-8080}:8080"
-    environment:
-      - ADMINER_DEFAULT_SERVER=${POSTGRES_HOST}
-    networks:
-      - nebengjek-network
-    restart: unless-stopped
-    profiles:
-      - dev
 
 networks:
   nebengjek-network:

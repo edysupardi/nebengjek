@@ -5,6 +5,7 @@ import { CalculateFareDto } from '@app/payment/dto/calculate-fare.dto';
 import { FinalizePaymentDto } from '@app/payment/dto/finalize-payment.dto';
 import { PaymentResponseDto } from '@app/payment/dto/payment-response.dto';
 import * as PriceConstant from '@app/common/constants/price.constant';
+import { FinalPaymentDto } from './dto/final-payment.dto';
 
 @Injectable()
 export class PaymentService {
@@ -181,5 +182,109 @@ export class PaymentService {
     });
     
     return this.mapToResponseDto(updatedTransaction);
+  }
+
+  async processTripPayment(data: FinalPaymentDto) {
+    try {
+      this.logger.log(`Processing payment for trip ${data.tripId}: Total ${data.totalAmount}, Driver ${data.driverAmount}, Platform ${data.platformFee}`);
+      
+      // Check if transaction already exists
+      let transaction = await this.transactionRepository.findByTripId(data.tripId);
+      
+      if (!transaction) {
+        // Create new transaction record
+        transaction = await this.transactionRepository.create({
+          tripId: data.tripId,
+          totalFare: data.totalAmount,
+          driverShare: data.driverAmount,
+          platformFee: data.platformFee,
+          discount: 0, // Initially no discount
+          finalAmount: data.totalAmount,
+          status: 'pending',
+        });
+        
+        this.logger.log(`Created new transaction for trip ${data.tripId}`);
+      }
+      
+      // Process customer payment (deduct from customer wallet)
+      const customerPaymentResult = await this.mockDeductCustomerBalance(data.customerId, data.totalAmount);
+      if (!customerPaymentResult.success) {
+        this.logger.error(`Customer payment failed for trip ${data.tripId}: ${customerPaymentResult.message}`);
+        
+        // Update transaction status to failed
+        await this.transactionRepository.update(transaction.id, {
+          status: 'failed',
+        });
+        
+        throw new BadRequestException(`Customer payment failed: ${customerPaymentResult.message}`);
+      }
+      
+      // Process driver payment (add to driver wallet)
+      const driverPaymentResult = await this.mockAddDriverBalance(data.driverId, data.driverAmount);
+      if (!driverPaymentResult.success) {
+        this.logger.error(`Driver payment failed for trip ${data.tripId}: ${driverPaymentResult.message}`);
+        
+        // Rollback customer payment (add back to customer wallet)
+        await this.mockAddCustomerBalance(data.customerId, data.totalAmount);
+        
+        // Update transaction status to failed
+        await this.transactionRepository.update(transaction.id, {
+          status: 'failed',
+        });
+        
+        throw new BadRequestException(`Driver payment failed: ${driverPaymentResult.message}`);
+      }
+      
+      // Update transaction with final status
+      const updatedTransaction = await this.transactionRepository.update(transaction.id, {
+        finalAmount: data.totalAmount,
+        driverShare: data.driverAmount,
+        platformFee: data.platformFee,
+        status: 'paid',
+      });
+      
+      this.logger.log(`Payment processed successfully for trip ${data.tripId}: Customer ${data.customerId} paid ${data.totalAmount}, Driver ${data.driverId} received ${data.driverAmount}`);
+      
+      return {
+        success: true,
+        transactionId: updatedTransaction.id,
+        tripId: data.tripId,
+        totalAmount: data.totalAmount,
+        driverAmount: data.driverAmount,
+        platformFee: data.platformFee,
+        actualDistance: data.actualDistance,
+        billableKm: data.billableKm,
+        customerBalance: customerPaymentResult.balance,
+        driverBalance: driverPaymentResult.balance,
+        message: 'Payment processed successfully'
+      };
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to process payment for trip ${data.tripId}: ${errorMessage}`, error);
+      
+      return {
+        success: false,
+        tripId: data.tripId,
+        error: errorMessage,
+        message: 'Payment processing failed'
+      };
+    }
+  }
+
+  // Method helper untuk menambah saldo customer (untuk rollback)
+  async mockAddCustomerBalance(customerId: string, amount: number): Promise<{ success: boolean, message: string, balance: number }> {
+    // Mock implementasi, anggap ini berhasil
+    const mockInitialBalance = 1000000; // Anggap saldo awal 1jt
+    const mockNewBalance = mockInitialBalance + amount;
+    
+    console.log(`[MOCK] Added ${amount} to customer ${customerId}'s wallet (rollback). New balance: ${mockNewBalance}`);
+    this.logger.log(`[MOCK] Added ${amount} to customer ${customerId}'s wallet (rollback). New balance: ${mockNewBalance}`);
+    
+    return {
+      success: true,
+      message: 'Saldo customer berhasil dikembalikan',
+      balance: mockNewBalance
+    };
   }
 }

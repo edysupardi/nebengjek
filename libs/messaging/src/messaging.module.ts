@@ -18,11 +18,11 @@ export class MessagingModule {
           maxListeners: 10,
           verboseMemoryLeak: true,
         }),
-        RedisModule.forRoot(), // ✅ Change: Call forRoot() method
+        RedisModule.forRoot(),
       ],
       providers: [
         {
-          provide: 'MESSAGING_OPTIONS', // ✅ Add missing provider
+          provide: 'MESSAGING_OPTIONS',
           useValue: {
             serviceName: 'default',
           },
@@ -45,6 +45,19 @@ export class MessagingModule {
         useFactory: options.useFactory,
         inject: options.inject || [],
       },
+      // Provide separate Redis client for messaging if redisConfig is specified
+      {
+        provide: 'MESSAGING_REDIS_CLIENT',
+        useFactory: (...args: any[]) => {
+          const config = options.useFactory(...args);
+          if (config.redisConfig) {
+            const Redis = require('ioredis');
+            return new Redis(config.redisConfig);
+          }
+          return null; // Use default Redis if no custom config
+        },
+        inject: options.inject || [],
+      },
       MessagingService,
     ];
 
@@ -56,7 +69,7 @@ export class MessagingModule {
           delimiter: '.',
           maxListeners: 10,
         }),
-        RedisModule.forRoot(), // ✅ Change: Call forRoot() method
+        RedisModule.forRoot(),
         ...(options.imports || []),
       ],
       providers,
