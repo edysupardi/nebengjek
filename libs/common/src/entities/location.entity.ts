@@ -7,7 +7,7 @@ export class Location {
   longitude: number;
   timestamp: Date;
   createdAt: Date;
-  
+
   // Relasi
   user?: User;
 }

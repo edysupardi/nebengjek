@@ -21,8 +21,8 @@ import { JwtAuthGuard } from '@app/common';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_ACCESS_SECRET'),
-        signOptions: { 
-          expiresIn: configService.get<string>('JWT_ACCESS_EXPIRES_IN') 
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_ACCESS_EXPIRES_IN'),
         },
       }),
       inject: [ConfigService],
@@ -32,23 +32,15 @@ import { JwtAuthGuard } from '@app/common';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_REFRESH_SECRET'),
-        signOptions: { 
-          expiresIn: configService.get<string>('JWT_REFRESH_EXPIRES_IN') 
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_REFRESH_EXPIRES_IN'),
         },
       }),
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    JwtStrategy,
-    JwtRefreshStrategy,
-    JwtAuthGuard,
-  ],
-  exports: [
-    JwtAuthGuard,
-    AuthService,
-  ]
+  providers: [AuthService, JwtStrategy, JwtRefreshStrategy, JwtAuthGuard],
+  exports: [JwtAuthGuard, AuthService],
 })
 export class AuthModule {}

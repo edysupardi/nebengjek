@@ -1,5 +1,5 @@
-import { UserRole } from "@app/common";
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
+import { UserRole } from '@app/common';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterUserDto {
   @IsString()

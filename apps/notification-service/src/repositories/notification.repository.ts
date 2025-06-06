@@ -6,13 +6,7 @@ import { PrismaService } from '@app/database/prisma/prisma.service';
 export class NotificationRepository {
   constructor(private prisma: PrismaService) {}
 
-  async saveNotification(data: {
-    userId: string;
-    type: string;
-    content: string;
-    isRead: boolean;
-    relatedId?: string;
-  }) {
+  async saveNotification(data: { userId: string; type: string; content: string; isRead: boolean; relatedId?: string }) {
     return this.prisma.notification.create({
       data,
     });

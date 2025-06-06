@@ -5,7 +5,7 @@ import { User as PrismaUser, Prisma } from '@prisma/client';
 
 type UserWithRelations = PrismaUser & {
   driverProfile?: DriverProfile | null;
-}
+};
 
 @Injectable()
 export class UserRepository {
@@ -18,9 +18,9 @@ export class UserRepository {
         driverProfile: true,
       },
     });
-  
+
     if (!user) return null;
-  
+
     // Transform null menjadi undefined
     return {
       ...user,
@@ -35,9 +35,9 @@ export class UserRepository {
         driverProfile: true,
       },
     });
-  
+
     if (!user) return null;
-  
+
     return {
       ...user,
       email: user.email ?? undefined,

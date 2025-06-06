@@ -19,14 +19,18 @@ export class PaymentController {
   @UseGuards(TrustedGatewayGuard)
   @Post('calculate')
   async calculateFare(@Body() calculateFareDto: CalculateFareDto): Promise<PaymentResponseDto> {
-    this.logger.log(`Calculating fare for trip ID: ${calculateFareDto.tripId} with distance: ${calculateFareDto.distanceInKm} km`);
+    this.logger.log(
+      `Calculating fare for trip ID: ${calculateFareDto.tripId} with distance: ${calculateFareDto.distanceInKm} km`,
+    );
     return this.paymentService.calculateFare(calculateFareDto);
   }
 
   @UseGuards(TrustedGatewayGuard)
   @Post('finalize')
   async finalizePayment(@Body() finalizePaymentDto: FinalizePaymentDto): Promise<PaymentResponseDto> {
-    this.logger.log(`Finalizing payment for trip ID: ${finalizePaymentDto.tripId} with discount: ${finalizePaymentDto.discount}`);
+    this.logger.log(
+      `Finalizing payment for trip ID: ${finalizePaymentDto.tripId} with discount: ${finalizePaymentDto.discount}`,
+    );
     return this.paymentService.finalizePayment(finalizePaymentDto);
   }
 
@@ -62,7 +66,7 @@ export class PaymentController {
       driverId,
       balance: mockBalance,
       currency: 'IDR',
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     };
   }
 
@@ -75,7 +79,7 @@ export class PaymentController {
       customerId,
       balance: mockBalance,
       currency: 'IDR',
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     };
   }
 

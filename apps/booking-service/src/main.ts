@@ -9,20 +9,20 @@ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(BookingModule);
-  
+
   // Enable validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-    })
+    }),
   );
 
   const logger = app.get(Logger);
   app.useLogger(logger); // beauty logger for nestjs
 
   // enable CORS for all routes
-  app.enableCors({ 
+  app.enableCors({
     origin: true,
     credentials: true,
   });
@@ -32,7 +32,7 @@ async function bootstrap() {
   const moduleRef = app.select(BookingModule);
   const reflector = moduleRef.get(Reflector);
   const excludedPaths = [''];
-  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
+  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format
 
   const httpPort = process.env.BOOKING_PORT || 3002;
   const tcpPort = Number(process.env.BOOKING_TCP_PORT) || 8005;
@@ -41,16 +41,13 @@ async function bootstrap() {
   await app.listen(httpPort);
 
   // Create TCP microservice
-  const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(
-    BookingModule,
-    {
-      transport: Transport.TCP,
-      options: {
-        host: '0.0.0.0',
-        port: tcpPort,
-      },
+  const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(BookingModule, {
+    transport: Transport.TCP,
+    options: {
+      host: '0.0.0.0',
+      port: tcpPort,
     },
-  );
+  });
 
   await microservice.listen();
   console.log(`Booking TCP microservice running on port ${tcpPort}`);

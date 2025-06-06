@@ -7,22 +7,22 @@ export class Trip {
   startTime: Date;
   endTime: Date | null;
   distance: number;
-  
+
   // Perhitungan harga yang lebih detail
   basePrice: number;
   discountAmount: number;
   discountPercentage: number;
   finalPrice: number;
-  
+
   // Pembagian fee platform
   platformFeePercentage: number;
   platformFeeAmount: number;
   driverAmount: number;
-  
+
   status: TripStatus;
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Relasi
   booking?: Booking;
 }

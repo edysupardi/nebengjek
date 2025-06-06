@@ -7,11 +7,11 @@ export class MetricsService {
   private readonly logger = new Logger(MetricsService.name);
 
   constructor(
-    @InjectMetric('http_requests_total') 
+    @InjectMetric('http_requests_total')
     private readonly requestCounter: Counter<string>,
-    @InjectMetric('http_request_duration_seconds') 
+    @InjectMetric('http_request_duration_seconds')
     private readonly requestDuration: Histogram<string>,
-    @InjectMetric('service_up') 
+    @InjectMetric('service_up')
     private readonly serviceUpGauge: Gauge<string>,
   ) {}
 

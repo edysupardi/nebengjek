@@ -29,7 +29,7 @@ export class MaintenanceService {
     try {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       // This method would need to be implemented in LocationService
       // const result = await this.locationService.deleteOldLocations(thirtyDaysAgo);
       // this.logger.log(`Cleanup completed: ${result} records deleted`);

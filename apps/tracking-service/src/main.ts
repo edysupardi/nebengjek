@@ -9,20 +9,20 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(TrackingModule);
-  
+
   // Enable validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-    })
+    }),
   );
 
   const logger = app.get(Logger);
   app.useLogger(logger); // beauty logger for nestjs
 
   // enable CORS for all routes
-  app.enableCors({ 
+  app.enableCors({
     origin: true,
     credentials: true,
   });
@@ -32,7 +32,7 @@ async function bootstrap() {
   const moduleRef = app.select(TrackingModule);
   const reflector = moduleRef.get(Reflector);
   const excludedPaths = [''];
-  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format 
+  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths)); // interceptor for response format
 
   // ADD WebSocket adapter
   app.useWebSocketAdapter(new IoAdapter(app));

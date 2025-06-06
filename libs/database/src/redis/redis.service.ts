@@ -47,7 +47,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async get(key: string): Promise<any> {
     const value = await this.client.get(key);
     if (!value) return null;
-    
+
     try {
       return JSON.parse(value);
     } catch {
@@ -66,7 +66,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.set(key, location, 300); // TTL 5 menit
   }
 
-  async getDriverLocation(driverId: string): Promise<{latitude: number; longitude: number; timestamp: number} | null> {
+  async getDriverLocation(
+    driverId: string,
+  ): Promise<{ latitude: number; longitude: number; timestamp: number } | null> {
     const key = `driver:${driverId}:location`;
     return this.get(key);
   }

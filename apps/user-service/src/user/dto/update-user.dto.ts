@@ -16,7 +16,7 @@ export class UpdateUserDto {
   @MinLength(10)
   @MaxLength(15)
   @Matches(/^(\+62|62|0)[8][1-9][0-9]{6,9}$/, {
-    message: 'Phone number must be valid Indonesian number'
+    message: 'Phone number must be valid Indonesian number',
   })
   phone?: string;
 

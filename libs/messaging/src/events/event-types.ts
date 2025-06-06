@@ -211,15 +211,12 @@ export interface EventPayloadMap {
 /**
  * Type-safe event publishing helper type
  */
-export type PublishEvent<T extends keyof EventPayloadMap> = (
-  event: T,
-  payload: EventPayloadMap[T]
-) => Promise<void>;
+export type PublishEvent<T extends keyof EventPayloadMap> = (event: T, payload: EventPayloadMap[T]) => Promise<void>;
 
 /**
  * Type-safe event subscription helper type
  */
 export type SubscribeToEvent<T extends keyof EventPayloadMap> = (
   event: T,
-  callback: (payload: EventPayloadMap[T]) => void
+  callback: (payload: EventPayloadMap[T]) => void,
 ) => void;

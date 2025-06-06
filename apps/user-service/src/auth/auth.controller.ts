@@ -15,27 +15,22 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   login(@Body() loginDto: LoginUserDto): Promise<LoginResponseDto> {
-    this.logger.log(
-      `Login attempt with email: ${loginDto.email}`,
-    );
+    this.logger.log(`Login attempt with email: ${loginDto.email}`);
     return this.authService.login(loginDto);
   }
 
   @Post('refresh')
   @HttpCode(200)
   @UseGuards(AuthGuard('jwt-refresh'))
-  async refreshToken(
-    @Request() req: any, 
-    @Body() refreshDto: RefreshTokenDto
-  ): Promise<RefreshTokenResponseDto> {
+  async refreshToken(@Request() req: any, @Body() refreshDto: RefreshTokenDto): Promise<RefreshTokenResponseDto> {
     try {
       const user = req.user;
       this.logger.log(`Refresh token request for user ID: ${user.userId}`);
-      
+
       // Call the refreshToken method with proper parameters
       return await this.authService.refreshToken(
-        user.userId, 
-        refreshDto.refresh_token // Use the token from the validated user object
+        user.userId,
+        refreshDto.refresh_token, // Use the token from the validated user object
       );
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

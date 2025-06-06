@@ -5,9 +5,11 @@ import { BookingStatus } from '@app/common/enums/booking-status.enum';
 
 type BookingWithRelations = Booking & {
   customer: User | null;
-  driver: (User & {
-    driverProfile: DriverProfile | null;
-  }) | null;
+  driver:
+    | (User & {
+        driverProfile: DriverProfile | null;
+      })
+    | null;
 };
 
 @Injectable()
@@ -20,9 +22,9 @@ export class BookingRepository {
       include: {
         customer: true,
         driver: true,
-      }
+      },
     });
-    
+
     return prismaBooking as BookingWithRelations;
   }
 
@@ -30,7 +32,7 @@ export class BookingRepository {
     return this.prisma.booking.findUnique({
       where: { id },
       include: {
-        customer: true,  // This will include all customer fields
+        customer: true, // This will include all customer fields
         driver: true,
       },
     });
@@ -57,23 +59,15 @@ export class BookingRepository {
     });
   }
 
-  async findByUser(
-    userId: string, 
-    status?: BookingStatus, 
-    skip = 0, 
-    take = 10
-  ): Promise<Booking[]> {
+  async findByUser(userId: string, status?: BookingStatus, skip = 0, take = 10): Promise<Booking[]> {
     const where: any = {
-      OR: [
-        { customerId: userId },
-        { driverId: userId },
-      ]
+      OR: [{ customerId: userId }, { driverId: userId }],
     };
-    
+
     if (status) {
       where.status = status;
     }
-    
+
     return this.prisma.booking.findMany({
       where,
       include: {
@@ -90,18 +84,15 @@ export class BookingRepository {
 
   async countByUser(userId: string, status?: BookingStatus): Promise<number> {
     const where: any = {
-      OR: [
-        { customerId: userId },
-        { driverId: userId },
-      ]
+      OR: [{ customerId: userId }, { driverId: userId }],
     };
-    
+
     if (status) {
       where.status = status;
     }
-    
+
     return this.prisma.booking.count({
-      where
+      where,
     });
   }
 

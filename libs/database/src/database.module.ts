@@ -13,10 +13,7 @@ export class DatabaseModule {
   static forRoot(): DynamicModule {
     return {
       module: DatabaseModule,
-      imports: [
-        PrismaModule,
-        RedisModule.forRoot(),
-      ],
+      imports: [PrismaModule, RedisModule.forRoot()],
       exports: [PrismaModule, RedisModule],
       global: true,
     };

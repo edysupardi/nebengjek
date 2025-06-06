@@ -7,16 +7,9 @@ import { DatabaseModule, RedisModule } from '@app/database';
 import { ConfigService } from '@nestjs/config';
 
 @Module({
-  imports: [
-    DatabaseModule,
-    RedisModule.forRoot(),
-  ],
+  imports: [DatabaseModule, RedisModule.forRoot()],
   controllers: [DriverController],
-  providers: [
-    DriverService,
-    DriverProfileRepository,
-    UserRepository,
-  ],
+  providers: [DriverService, DriverProfileRepository, UserRepository],
   exports: [DriverService],
 })
 export class DriverModule {}

@@ -6,11 +6,7 @@ import { Location } from '@app/common/entities';
 export class LocationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: {
-    userId: string;
-    latitude: number;
-    longitude: number;
-  }): Promise<Location> {
+  async create(data: { userId: string; latitude: number; longitude: number }): Promise<Location> {
     return this.prisma.location.create({
       data,
     });
@@ -23,11 +19,7 @@ export class LocationRepository {
     });
   }
 
-  async findByUserInTimeRange(
-    userId: string,
-    startTime: Date,
-    endTime: Date
-  ): Promise<Location[]> {
+  async findByUserInTimeRange(userId: string, startTime: Date, endTime: Date): Promise<Location[]> {
     return this.prisma.location.findMany({
       where: {
         userId,

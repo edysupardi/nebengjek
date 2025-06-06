@@ -6,10 +6,10 @@ import {
   StreamableFile,
   HttpException,
   HttpStatus,
-} from "@nestjs/common";
-import { Reflector } from "@nestjs/core";
-import { of, throwError } from "rxjs";
-import { catchError } from "rxjs/operators";
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { of, throwError } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 @Injectable()
 export class ResponseInterceptor implements NestInterceptor {
@@ -18,31 +18,24 @@ export class ResponseInterceptor implements NestInterceptor {
     private readonly excludePaths: string[] = [],
   ) {}
 
-  public async intercept(
-    context: ExecutionContext,
-    next: CallHandler<any>,
-  ): Promise<any> {
+  public async intercept(context: ExecutionContext, next: CallHandler<any>): Promise<any> {
     const defaultMessageResponse = {
-      200: "OK",
-      201: "Created",
-      202: "Accepted",
-      203: "NonAuthoritativeInfo",
-      204: "NoContent",
-      205: "ResetContent",
-      206: "PartialContent",
+      200: 'OK',
+      201: 'Created',
+      202: 'Accepted',
+      203: 'NonAuthoritativeInfo',
+      204: 'NoContent',
+      205: 'ResetContent',
+      206: 'PartialContent',
     };
 
     return next
       .handle()
       .pipe(
-        catchError((error) => {
-          const statusCode =
-            error instanceof HttpException
-              ? error.getStatus()
-              : HttpStatus.INTERNAL_SERVER_ERROR;
+        catchError(error => {
+          const statusCode = error instanceof HttpException ? error.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
-          const message =
-            error.response?.message || error.message || 'Internal Server Error';
+          const message = error.response?.message || error.message || 'Internal Server Error';
 
           return throwError(
             () =>
@@ -59,7 +52,7 @@ export class ResponseInterceptor implements NestInterceptor {
         }),
       )
       .toPromise()
-      .then(async (body) => {
+      .then(async body => {
         if (body instanceof StreamableFile) {
           return of(body);
         }
@@ -75,8 +68,7 @@ export class ResponseInterceptor implements NestInterceptor {
         }
 
         const status =
-          this.reflector.get<number>("__httpCode__", context.getHandler()) ||
-          (request.method === "POST" ? 201 : 200);
+          this.reflector.get<number>('__httpCode__', context.getHandler()) || (request.method === 'POST' ? 201 : 200);
 
         let messageResponse: string = '';
         if (defaultMessageResponse[status as keyof typeof defaultMessageResponse] !== undefined) {
@@ -103,7 +95,7 @@ export class ResponseInterceptor implements NestInterceptor {
           metaBody = {
             code: status,
             message: messageResponse,
-            totalData: body.totalData
+            totalData: body.totalData,
           };
           delete body.totalData;
         } else {

@@ -26,18 +26,18 @@ import { SecurityMiddleware } from '@app/apigateway/common/middleware/security.m
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => createWinstonLoggerOptions(configService),
     }),
-    ProxyModule,     // Handles request routing to microservices
-    AuthModule,      // Centralized auth validation
-    HealthModule,    // Health check endpoints for AWS load balancers
-    MetricsModule,   // Expose metrics for CloudWatch
+    ProxyModule, // Handles request routing to microservices
+    AuthModule, // Centralized auth validation
+    HealthModule, // Health check endpoints for AWS load balancers
+    MetricsModule, // Expose metrics for CloudWatch
     CircuitBreakerModule, // Circuit breaker implementation
-    DatabaseModule,  // Database connection and configuration
+    DatabaseModule, // Database connection and configuration
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         secret: configService.get('JWT_ACCESS_SECRET'),
-        signOptions: { 
+        signOptions: {
           expiresIn: configService.get('JWT_ACCESS_EXPIRES_IN', '15m'),
         },
       }),
@@ -60,8 +60,6 @@ import { SecurityMiddleware } from '@app/apigateway/common/middleware/security.m
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(SecurityMiddleware)
-      .forRoutes('*');
+    consumer.apply(SecurityMiddleware).forRoutes('*');
   }
 }

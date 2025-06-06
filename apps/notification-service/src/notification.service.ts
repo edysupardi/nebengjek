@@ -8,11 +8,11 @@ import { CustomerNotificationDto } from './dto/customer-notification.dto';
 import { TripNotificationDto } from './dto/trip-notification.dto';
 import { CustomerNotificationType, DriverNotificationType, TripStatus } from '@app/common';
 // import { MessagingService } from '@app/messaging'; // Commented out to fix Redis conflict
-// import { 
-//   BookingEvents, 
-//   TripEvents, 
+// import {
+//   BookingEvents,
+//   TripEvents,
 //   PaymentEvents,
-//   EventPayloadMap 
+//   EventPayloadMap
 // } from '@app/messaging/events/event-types'; // Commented out temporarily
 
 @Injectable()
@@ -53,7 +53,7 @@ export class NotificationService implements OnModuleInit {
   // Direct API methods for notification sending
   async notifyBookingEvent(dto: BookingNotificationDto) {
     this.logger.log(`Notifying booking event: ${dto.status} for booking ${dto.bookingId}`);
-    
+
     // Save notification to database
     await this.notificationRepository.saveNotification({
       userId: dto.customerId,
@@ -62,18 +62,14 @@ export class NotificationService implements OnModuleInit {
       isRead: false,
       relatedId: dto.bookingId,
     });
-    
+
     // Send WebSocket notification to customer
-    this.notificationGateway.sendToCustomer(
-      dto.customerId,
-      'booking_update',
-      {
-        bookingId: dto.bookingId,
-        status: dto.status,
-        message: dto.message
-      }
-    );
-    
+    this.notificationGateway.sendToCustomer(dto.customerId, 'booking_update', {
+      bookingId: dto.bookingId,
+      status: dto.status,
+      message: dto.message,
+    });
+
     // If driver is assigned, notify them too
     if (dto.driverId) {
       await this.notificationRepository.saveNotification({
@@ -83,22 +79,18 @@ export class NotificationService implements OnModuleInit {
         isRead: false,
         relatedId: dto.bookingId,
       });
-      
-      this.notificationGateway.sendToDriver(
-        dto.driverId,
-        'booking_update',
-        {
-          bookingId: dto.bookingId,
-          status: dto.status,
-          message: dto.message
-        }
-      );
+
+      this.notificationGateway.sendToDriver(dto.driverId, 'booking_update', {
+        bookingId: dto.bookingId,
+        status: dto.status,
+        message: dto.message,
+      });
     }
   }
 
   async notifyDrivers(dto: DriverNotificationDto) {
     this.logger.log(`Sending notification to driver ${dto.driverId}: ${dto.type}`);
-    
+
     // Save notification to database
     await this.notificationRepository.saveNotification({
       userId: dto.driverId,
@@ -107,21 +99,17 @@ export class NotificationService implements OnModuleInit {
       isRead: false,
       relatedId: dto.bookingId || dto.tripId,
     });
-    
+
     // Send WebSocket notification to driver
-    this.notificationGateway.sendToDriver(
-      dto.driverId,
-      dto.type,
-      {
-        ...dto,
-        timestamp: new Date(),
-      }
-    );
+    this.notificationGateway.sendToDriver(dto.driverId, dto.type, {
+      ...dto,
+      timestamp: new Date(),
+    });
   }
 
   async notifyCustomer(dto: CustomerNotificationDto) {
     this.logger.log(`Sending notification to customer ${dto.customerId}: ${dto.type}`);
-    
+
     // Save notification to database
     await this.notificationRepository.saveNotification({
       userId: dto.customerId,
@@ -130,21 +118,17 @@ export class NotificationService implements OnModuleInit {
       isRead: false,
       relatedId: dto.bookingId || dto.tripId,
     });
-    
+
     // Send WebSocket notification to customer
-    this.notificationGateway.sendToCustomer(
-      dto.customerId,
-      dto.type,
-      {
-        ...dto,
-        timestamp: new Date(),
-      }
-    );
+    this.notificationGateway.sendToCustomer(dto.customerId, dto.type, {
+      ...dto,
+      timestamp: new Date(),
+    });
   }
 
   async notifyTripEvent(dto: TripNotificationDto) {
     this.logger.log(`Notifying trip event: ${dto.status} for trip ${dto.tripId}`);
-    
+
     // Notify customer
     await this.notificationRepository.saveNotification({
       userId: dto.customerId,
@@ -153,19 +137,15 @@ export class NotificationService implements OnModuleInit {
       isRead: false,
       relatedId: dto.tripId,
     });
-    
-    this.notificationGateway.sendToCustomer(
-      dto.customerId,
-      'trip_update',
-      {
-        tripId: dto.tripId,
-        status: dto.status,
-        message: dto.message,
-        distance: dto.distance,
-        fare: dto.fare,
-      }
-    );
-    
+
+    this.notificationGateway.sendToCustomer(dto.customerId, 'trip_update', {
+      tripId: dto.tripId,
+      status: dto.status,
+      message: dto.message,
+      distance: dto.distance,
+      fare: dto.fare,
+    });
+
     // Notify driver
     await this.notificationRepository.saveNotification({
       userId: dto.driverId,
@@ -174,18 +154,14 @@ export class NotificationService implements OnModuleInit {
       isRead: false,
       relatedId: dto.tripId,
     });
-    
-    this.notificationGateway.sendToDriver(
-      dto.driverId,
-      'trip_update',
-      {
-        tripId: dto.tripId,
-        status: dto.status,
-        message: dto.message,
-        distance: dto.distance,
-        fare: dto.fare,
-      }
-    );
+
+    this.notificationGateway.sendToDriver(dto.driverId, 'trip_update', {
+      tripId: dto.tripId,
+      status: dto.status,
+      message: dto.message,
+      distance: dto.distance,
+      fare: dto.fare,
+    });
   }
 
   /*
@@ -240,7 +216,7 @@ export class NotificationService implements OnModuleInit {
     data?: any;
   }) {
     this.logger.log(`Creating notification for user ${data.userId}: ${data.title}`);
-    
+
     try {
       const notificationData = {
         userId: data.userId,
@@ -254,27 +230,23 @@ export class NotificationService implements OnModuleInit {
       await this.notificationRepository.saveNotification(notificationData);
 
       // Send via WebSocket if needed
-      this.notificationGateway.sendToCustomer(
-        data.userId,
-        data.type,
-        {
-          title: data.title,
-          message: data.message,
-          data: data.data,
-          timestamp: new Date(),
-        }
-      );
+      this.notificationGateway.sendToCustomer(data.userId, data.type, {
+        title: data.title,
+        message: data.message,
+        data: data.data,
+        timestamp: new Date(),
+      });
 
       return {
         success: true,
         notificationId: `notif_${Date.now()}`,
-        message: 'Notification created successfully'
+        message: 'Notification created successfully',
       };
     } catch (error) {
       this.logger.error('Error creating notification:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }

@@ -11,7 +11,7 @@ export class DriverService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly driverProfileRepository: DriverProfileRepository,
-    @Inject('REDIS_CLIENT') private redis: any
+    @Inject('REDIS_CLIENT') private redis: any,
   ) {}
 
   async registerAsDriver(userId: string, driverDto: RegisterDriverDto) {
@@ -53,7 +53,7 @@ export class DriverService {
 
   /**
    * Updates the driver's active status and manages their real-time tracking state in Redis
-   * 
+   *
    * @param userId - The unique identifier of the user/driver
    * @param status - Boolean indicating whether the driver is active (true) or inactive (false)
    * @returns Promise containing the updated driver profile
@@ -67,7 +67,7 @@ export class DriverService {
     }
 
     const updatedProfile = await this.driverProfileRepository.update(driverProfile.id, {
-      status
+      status,
     });
 
     // Update Redis for real-time tracking
@@ -101,10 +101,10 @@ export class DriverService {
       JSON.stringify({
         lat: locationDto.latitude,
         lng: locationDto.longitude,
-        timestamp: new Date()
+        timestamp: new Date(),
       }),
       'EX',
-      300 // 5 minutes expiry
+      300, // 5 minutes expiry
     );
     this.logger.log(`Driver location updated in Redis for user ID: ${userId}`);
 

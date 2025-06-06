@@ -72,14 +72,7 @@ import { MessagingModule } from '@app/messaging';
     ]),
   ],
   controllers: [BookingController],
-  providers: [
-    BookingService,
-    BookingRepository,
-    PrismaService,
-  ],
-  exports: [
-    BookingService,
-    BookingRepository,
-  ],
+  providers: [BookingService, BookingRepository, PrismaService],
+  exports: [BookingService, BookingRepository],
 })
-export class BookingModule { }
+export class BookingModule {}

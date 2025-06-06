@@ -30,19 +30,13 @@ export class UserController {
   }
 
   @Put('profile')
-  async updateProfile(
-    @Request() req: any,
-    @Body() updateDto: UpdateUserDto
-  ): Promise<UserResponseDto> {
+  async updateProfile(@Request() req: any, @Body() updateDto: UpdateUserDto): Promise<UserResponseDto> {
     this.logger.log(`Updating profile for user ID: ${req.user.userId}`);
     return this.userService.updateProfile(req.user.userId, updateDto);
   }
 
   @Put('password')
-  async changePassword(
-    @Request() req: any,
-    @Body() changePasswordDto: ChangePasswordDto
-  ): Promise<UserResponseDto> {
+  async changePassword(@Request() req: any, @Body() changePasswordDto: ChangePasswordDto): Promise<UserResponseDto> {
     this.logger.log(`Changing password for user ID: ${req.user.userId}`);
     return this.userService.changePassword(req.user.userId, changePasswordDto);
   }

@@ -35,14 +35,14 @@ import { LoggingModule } from '@app/common/modules/logging.module';
         // Auto-subscribe to these channels on startup
         channels: [
           'booking.created',
-          'booking.updated', 
+          'booking.updated',
           'booking.accepted',
           'booking.rejected',
           'booking.cancelled',
           'trip.started',
           'trip.updated',
           'trip.ended',
-          'payment.completed'
+          'payment.completed',
         ],
       }),
       inject: [ConfigService],
@@ -64,11 +64,7 @@ import { LoggingModule } from '@app/common/modules/logging.module';
     }),
   ],
   controllers: [NotificationController, EventsController],
-  providers: [
-    NotificationService, 
-    NotificationRepository, 
-    NotificationGateway,
-  ],
+  providers: [NotificationService, NotificationRepository, NotificationGateway],
   exports: [NotificationService],
 })
 export class NotificationModule {}

@@ -1,4 +1,11 @@
-import { Injectable, Inject, Logger, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { TripRepository } from '@app/trip/repositories/trip.repository';
 import { LocationService } from '@app/location/location.service';
 import { StartTripDto } from '@app/trip/dto/start-trip.dto';
@@ -25,8 +32,8 @@ export class TripService {
     @Inject('REDIS_CLIENT') private readonly redis: any,
     @Inject('BOOKING_SERVICE') private readonly bookingServiceClient: ClientProxy,
     @Inject('PAYMENT_SERVICE') private readonly paymentServiceClient: ClientProxy,
-    private readonly messagingService: MessagingService
-  ) { }
+    private readonly messagingService: MessagingService,
+  ) {}
 
   async startTrip(driverId: string, startTripDto: StartTripDto) {
     try {
@@ -62,37 +69,38 @@ export class TripService {
           driverId,
           startTime: trip.startTime,
           locations: [],
-          
+
           // Dual distance tracking
-          totalDistance: 0,              // Actual GPS distance
-          billableKm: 0,                 // 1km chunks billed
-          accumulatedForBilling: 0,      // Accumulator for next 1km
-          
+          totalDistance: 0, // Actual GPS distance
+          billableKm: 0, // 1km chunks billed
+          accumulatedForBilling: 0, // Accumulator for next 1km
+
           // Cost tracking
           currentCost: 0,
           lastUpdateTime: new Date().toISOString(),
         }),
         'EX',
-        86400
+        86400,
       );
 
       try {
         this.logger.log(`Attempting to update booking ${startTripDto.bookingId} status to ONGOING`);
-        
+
         const updateResult = await firstValueFrom(
-          this.bookingServiceClient.send('booking.ongoingStatus', {
-            bookingId: startTripDto.bookingId,
-            userId: driverId,
-            startedAt: new Date()
-          }).pipe(
-            timeout(10000) // 10 second timeout
-          )
+          this.bookingServiceClient
+            .send('booking.ongoingStatus', {
+              bookingId: startTripDto.bookingId,
+              userId: driverId,
+              startedAt: new Date(),
+            })
+            .pipe(
+              timeout(10000), // 10 second timeout
+            ),
         );
-        
+
         this.logger.log(`Booking status updated successfully:`, updateResult);
-        
       } catch (bookingError: unknown) {
-        let errorMesssage = bookingError instanceof Error ? bookingError.message : 'Unknown error';
+        const errorMesssage = bookingError instanceof Error ? bookingError.message : 'Unknown error';
         this.logger.error(`Booking service communication error: ${String(bookingError)}`, errorMesssage);
 
         // Don't fail the whole operation - trip can continue without booking update
@@ -113,8 +121,8 @@ export class TripService {
           customerId: booking.customerId,
           pickupLocation: {
             latitude: booking.pickupLat,
-            longitude: booking.pickupLng
-          }
+            longitude: booking.pickupLng,
+          },
         });
       }
 
@@ -159,36 +167,35 @@ export class TripService {
           lastLocation.latitude,
           lastLocation.longitude,
           newLocation.latitude,
-          newLocation.longitude
+          newLocation.longitude,
         );
 
         // Only process significant movement (> 10 meters)
         if (segmentDistance > 0.01) {
-          
           // 1. Track ACTUAL GPS distance (for accuracy & transparency)
           trip.totalDistance = (trip.totalDistance || 0) + segmentDistance;
-          
+
           // 2. Accumulate for 1KM BILLING CHUNKS (assessment requirement)
           trip.accumulatedForBilling = (trip.accumulatedForBilling || 0) + segmentDistance;
-          
+
           // 3. Check if we reached 1km billing threshold
           if (trip.accumulatedForBilling >= 1.0) {
             // Calculate how many complete kilometers to bill
             const completedKm = Math.floor(trip.accumulatedForBilling);
-            
+
             // Add to billable distance
             trip.billableKm = (trip.billableKm || 0) + completedKm;
-            
+
             // Keep remainder for next accumulation
             trip.accumulatedForBilling = trip.accumulatedForBilling - completedKm;
-            
+
             // Update current cost based on billable kilometers
             const newCost = trip.billableKm * PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM;
             trip.currentCost = newCost;
-            
+
             // Log billing milestone
             this.logger.log(`Trip ${tripId}: Billing milestone - ${trip.billableKm}km completed, Cost: Rp${newCost}`);
-            
+
             // Optional: Send billing notification to customer
             // this.tripGateway.sendBillingUpdate(tripId, {
             //   message: `${completedKm}km completed`,
@@ -201,42 +208,32 @@ export class TripService {
       }
 
       // Update Redis
-      await this.redis.set(
-        `trip:${tripId}`,
-        JSON.stringify(trip),
-        'EX',
-        86400
-      );
+      await this.redis.set(`trip:${tripId}`, JSON.stringify(trip), 'EX', 86400);
 
       // Update user's current location
-      await this.locationService.updateLocation(
-        userId,
-        updateLocationDto.latitude,
-        updateLocationDto.longitude
-      );
+      await this.locationService.updateLocation(userId, updateLocationDto.latitude, updateLocationDto.longitude);
 
       // Enhanced WebSocket update with billing transparency
       this.tripGateway.sendLocationUpdate(tripId, {
         latitude: updateLocationDto.latitude,
         longitude: updateLocationDto.longitude,
-        
+
         // Dual distance tracking
         distance: {
-          actual: Number((trip.totalDistance || 0).toFixed(3)),        // GPS accuracy
-          billable: trip.billableKm || 0,                              // 1km chunks billed
+          actual: Number((trip.totalDistance || 0).toFixed(3)), // GPS accuracy
+          billable: trip.billableKm || 0, // 1km chunks billed
           accumulated: Number((trip.accumulatedForBilling || 0).toFixed(3)), // Progress to next km
-          nextBillingIn: Number((1.0 - (trip.accumulatedForBilling || 0)).toFixed(3)) // Distance until next billing
+          nextBillingIn: Number((1.0 - (trip.accumulatedForBilling || 0)).toFixed(3)), // Distance until next billing
         },
-        
+
         cost: {
           current: trip.currentCost || 0,
           perKm: PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM,
-          billingMethod: "1km chunks"
+          billingMethod: '1km chunks',
         },
-        
+
         timestamp: new Date().toISOString(),
       });
-
 
       // Get booking data to access customerId for messaging
       const tripRecord = await this.tripRepository.findById(tripId);
@@ -261,13 +258,13 @@ export class TripService {
           actual: Number((trip.totalDistance || 0).toFixed(3)),
           billable: trip.billableKm || 0,
           accumulated: Number((trip.accumulatedForBilling || 0).toFixed(3)),
-          nextMilestone: Number((1.0 - (trip.accumulatedForBilling || 0)).toFixed(3))
+          nextMilestone: Number((1.0 - (trip.accumulatedForBilling || 0)).toFixed(3)),
         },
 
         cost: {
           current: trip.currentCost || 0,
-          lastUpdate: trip.lastUpdateTime
-        }
+          lastUpdate: trip.lastUpdateTime,
+        },
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -296,7 +293,7 @@ export class TripService {
 
       // FINAL BILLING CALCULATION
       let finalBillableKm = trip.billableKm || 0;
-      
+
       // Handle remaining accumulated distance
       if ((trip.accumulatedForBilling || 0) > 0) {
         // Bill remaining distance as 1 full kilometer (round up)
@@ -314,8 +311,8 @@ export class TripService {
       // Update trip in database with ACTUAL GPS distance
       const updatedTrip = await this.tripRepository.update(tripId, {
         endTime: new Date(),
-        distance: trip.totalDistance || 0,        // Store actual GPS distance
-        basePrice: basePrice,                     // Based on billable km
+        distance: trip.totalDistance || 0, // Store actual GPS distance
+        basePrice: basePrice, // Based on billable km
         discountAmount: discountAmount,
         discountPercentage: endTripDto.discountPercentage || 0,
         finalPrice: finalPrice,
@@ -338,20 +335,20 @@ export class TripService {
         await firstValueFrom(
           this.bookingServiceClient.send('booking.complete', {
             bookingId: tripRecord.bookingId,
-            completedAt: new Date()
-          })
+            completedAt: new Date(),
+          }),
         );
 
         this.logger.log(`Booking status successfully update to complete, id: ${tripRecord.bookingId}`);
       } catch (bookingError: unknown) {
-        let errorMesssage = bookingError instanceof Error ? bookingError.message : 'Unknown error';
+        const errorMesssage = bookingError instanceof Error ? bookingError.message : 'Unknown error';
         this.logger.error(`Booking service communication error: ${String(bookingError)}`, errorMesssage);
       }
 
       // Process payment
       try {
         this.logger.log(`Attempting to payment booking ${tripRecord.bookingId}`);
-        
+
         await firstValueFrom(
           this.paymentServiceClient.send('payment.processTrip', {
             bookingId: tripRecord.bookingId,
@@ -362,13 +359,13 @@ export class TripService {
             driverAmount: driverAmount,
             platformFee: platformFeeAmount,
             actualDistance: trip.totalDistance || 0,
-            billableKm: finalBillableKm
-          })
+            billableKm: finalBillableKm,
+          }),
         );
-        
+
         this.logger.log(`Payment for booking ${tripRecord.bookingId} successfully:`);
       } catch (paymentError: unknown) {
-        let errorMesssage = paymentError instanceof Error ? paymentError.message : 'Unknown error';
+        const errorMesssage = paymentError instanceof Error ? paymentError.message : 'Unknown error';
         this.logger.error(`Payment service communication error: ${String(paymentError)}`, errorMesssage);
       }
 
@@ -381,7 +378,7 @@ export class TripService {
         finalPrice: finalPrice,
         actualDistance: trip.totalDistance || 0,
         billableKm: finalBillableKm,
-        driverDiscount: endTripDto.discountPercentage || 0
+        driverDiscount: endTripDto.discountPercentage || 0,
       });
 
       // Publish trip ended event
@@ -392,24 +389,26 @@ export class TripService {
         customerId: tripRecord.booking.customerId,
         actualDistance: trip.totalDistance || 0,
         billableKm: finalBillableKm,
-        fare: finalPrice
+        fare: finalPrice,
       });
 
-      this.logger.log(`Trip completed: ${tripId}, GPS: ${trip.totalDistance}km, Billed: ${finalBillableKm}km, Final: Rp${finalPrice}`);
+      this.logger.log(
+        `Trip completed: ${tripId}, GPS: ${trip.totalDistance}km, Billed: ${finalBillableKm}km, Final: Rp${finalPrice}`,
+      );
 
       return {
         ...updatedTrip,
-        
+
         // Enhanced trip summary
         tripSummary: {
           actualGPSDistance: Number((trip.totalDistance || 0).toFixed(3)),
           billableDistance: finalBillableKm,
-          billingMethod: "1km chunks (assessment compliant)",
+          billingMethod: '1km chunks (assessment compliant)',
           duration: this.calculateTripDuration(trip.startTime, new Date()),
           startTime: trip.startTime,
           endTime: new Date(),
         },
-        
+
         // Transparent cost breakdown
         costBreakdown: {
           calculation: `${finalBillableKm}km × Rp${PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM}`,
@@ -417,10 +416,9 @@ export class TripService {
           driverDiscount: `${endTripDto.discountPercentage || 0}% = -Rp${discountAmount}`,
           subtotal: finalPrice,
           platformFee: `${PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE}% = Rp${platformFeeAmount}`,
-          driverEarnings: driverAmount
-        }
+          driverEarnings: driverAmount,
+        },
       };
-
     } catch (error) {
       this.logger.error('Failed to end trip:', error);
       throw error;
@@ -436,7 +434,7 @@ export class TripService {
         return {
           ...redisTrip,
           status: 'ONGOING',
-          estimatedCost: this.calculateFinalCost(redisTrip.totalDistance || 0).finalPrice
+          estimatedCost: this.calculateFinalCost(redisTrip.totalDistance || 0).finalPrice,
         };
       }
 
@@ -609,7 +607,7 @@ export class TripService {
         platformFeePercentage: this.PLATFORM_FEE_PERCENTAGE * 100,
         platformFeeAmount: costCalculation.platformFeeAmount,
         driverAmount: costCalculation.driverAmount,
-        finalPrice: costCalculation.finalPrice || costCalculation.estimatedFinalPrice
+        finalPrice: costCalculation.finalPrice || costCalculation.estimatedFinalPrice,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -631,7 +629,7 @@ export class TripService {
             return {
               bookingId: data.bookingId,
               totalDistanceKm: trip.totalDistance,
-              locations: trip.locations.length
+              locations: trip.locations.length,
             };
           }
         }
@@ -646,7 +644,7 @@ export class TripService {
       return {
         bookingId: data.bookingId,
         totalDistanceKm: trip.distance,
-        locations: 0 // Completed trips don't have location tracking data
+        locations: 0, // Completed trips don't have location tracking data
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -657,7 +655,7 @@ export class TripService {
 
   // Event handler for trip completion (legacy compatibility)
   @EventPattern('trip.complete')
-  async handleTripCompleteEvent(data: { bookingId: string, tripDetails: any }) {
+  async handleTripCompleteEvent(data: { bookingId: string; tripDetails: any }) {
     try {
       const tripId = await this.findTripIdByBookingId(data.bookingId);
       if (!tripId) {
@@ -674,7 +672,7 @@ export class TripService {
         finalPrice: data.tripDetails.finalPrice,
         platformFeePercentage: data.tripDetails.platformFeePercentage,
         platformFeeAmount: data.tripDetails.platformFeeAmount,
-        driverAmount: data.tripDetails.driverAmount
+        driverAmount: data.tripDetails.driverAmount,
       });
 
       // Clean up Redis
@@ -684,7 +682,7 @@ export class TripService {
       this.tripGateway.sendTripStatusUpdate(tripId, {
         status: 'COMPLETED',
         finalPrice: data.tripDetails.finalPrice,
-        totalDistance: data.tripDetails.totalDistance
+        totalDistance: data.tripDetails.totalDistance,
       });
 
       this.logger.log(`Trip completed for booking ${data.bookingId}`);
@@ -709,7 +707,7 @@ export class TripService {
       discountPercentage,
       finalPrice,
       platformFeeAmount,
-      driverAmount
+      driverAmount,
     };
   }
 
@@ -719,8 +717,7 @@ export class TripService {
     const dLon = this.toRad(lon2 - lon1);
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }

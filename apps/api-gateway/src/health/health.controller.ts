@@ -1,11 +1,11 @@
 import { Controller, Get, Logger } from '@nestjs/common';
-import { 
-  HealthCheck, 
-  HealthCheckService, 
-  HttpHealthIndicator, 
+import {
+  HealthCheck,
+  HealthCheckService,
+  HttpHealthIndicator,
   MemoryHealthIndicator,
   DiskHealthIndicator,
-  HealthIndicatorResult
+  HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { ConfigService } from '@nestjs/config';
 import { SkipAuth } from '@app/apigateway/common/decorators/skip-auth.decorator';
@@ -32,8 +32,8 @@ export class HealthController {
   @SkipAuth()
   @SkipRateLimit()
   @ApiOperation({ summary: 'Check API Gateway and microservices health' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Health check successful',
     schema: {
       type: 'object',
@@ -41,24 +41,24 @@ export class HealthController {
         status: { type: 'string', example: 'ok' },
         info: { type: 'object' },
         error: { type: 'object' },
-        details: { type: 'object' }
-      }
-    }
+        details: { type: 'object' },
+      },
+    },
   })
   async check() {
     this.logger.log('Executing comprehensive health check');
-    
+
     return this.health.check([
       // System checks
       () => this.memory.checkHeap('memory_heap', 200 * 1024 * 1024), // 200MB
-      () => this.memory.checkRSS('memory_rss', 3000 * 1024 * 1024),  // 3GB
+      () => this.memory.checkRSS('memory_rss', 3000 * 1024 * 1024), // 3GB
       () => this.disk.checkStorage('disk', { path: '/', thresholdPercent: 0.9 }),
-      
+
       // Microservices checks - run in parallel
       async () => this.checkMicroservices(),
-      
+
       // Custom application checks
-      async () => this.healthService.checkApiGatewayComponents()
+      async () => this.healthService.checkApiGatewayComponents(),
     ]);
   }
 
@@ -66,17 +66,17 @@ export class HealthController {
   @SkipAuth()
   @SkipRateLimit()
   @ApiOperation({ summary: 'Simple liveness check for load balancers' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'API Gateway is alive', 
+  @ApiResponse({
+    status: 200,
+    description: 'API Gateway is alive',
     schema: {
       type: 'object',
       properties: {
         status: { type: 'string', example: 'up' },
         timestamp: { type: 'string', example: '2023-01-01T00:00:00.000Z' },
-        uptime: { type: 'number', example: 3600 }
-      }
-    }
+        uptime: { type: 'number', example: 3600 },
+      },
+    },
   })
   liveness() {
     const healthStatus = {
@@ -84,9 +84,9 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       version: this.configService.get('npm_package_version', '1.0.0'),
-      environment: this.configService.get('NODE_ENV', 'development')
+      environment: this.configService.get('NODE_ENV', 'development'),
     };
-    
+
     this.logger.debug(`Liveness check: ${JSON.stringify(healthStatus)}`);
     return healthStatus;
   }
@@ -95,28 +95,26 @@ export class HealthController {
   @SkipAuth()
   @SkipRateLimit()
   @ApiOperation({ summary: 'Readiness check for load balancer traffic direction' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'API Gateway is ready to accept requests' 
+  @ApiResponse({
+    status: 200,
+    description: 'API Gateway is ready to accept requests',
   })
   async readiness() {
     // Untuk readiness check, kita hanya perlu memastikan bahwa APIs
     // kritis tersedia, tidak semua microservices
-    
-    const criticalServices = [
-      'user-service',
-      'booking-service',
-    ];
-    
+
+    const criticalServices = ['user-service', 'booking-service'];
+
     const checks = criticalServices.map(service => {
       const envPrefix = service.toUpperCase().replace(/-/g, '_');
-      return () => this.checkService(
-        service,
-        this.configService.get(`${envPrefix}_HOST`, 'localhost'),
-        this.configService.get(`${envPrefix}_PORT`, '3000')
-      );
+      return () =>
+        this.checkService(
+          service,
+          this.configService.get(`${envPrefix}_HOST`, 'localhost'),
+          this.configService.get(`${envPrefix}_PORT`, '3000'),
+        );
     });
-    
+
     return this.health.check(checks);
   }
 
@@ -128,24 +126,26 @@ export class HealthController {
       { name: 'matching-service', envPrefix: 'MATCHING_SERVICE' },
       { name: 'payment-service', envPrefix: 'PAYMENT_SERVICE' },
       { name: 'notification-service', envPrefix: 'NOTIFICATION_SERVICE' },
-      { name: 'tracking-service', envPrefix: 'TRACKING_SERVICE' }
+      { name: 'tracking-service', envPrefix: 'TRACKING_SERVICE' },
     ];
-    
-    const results = await Promise.allSettled(services.map(service => 
-      this.checkService(
-        service.name,
-        this.configService.get(`${service.envPrefix}_HOST`, 'localhost'),
-        this.configService.get(`${service.envPrefix}_PORT`, '3000')
-      )
-    ));
-    
+
+    const results = await Promise.allSettled(
+      services.map(service =>
+        this.checkService(
+          service.name,
+          this.configService.get(`${service.envPrefix}_HOST`, 'localhost'),
+          this.configService.get(`${service.envPrefix}_PORT`, '3000'),
+        ),
+      ),
+    );
+
     // Process results
-    const microservicesHealth: HealthIndicatorResult = {}; 
+    const microservicesHealth: HealthIndicatorResult = {};
     let allHealthy = true;
-    
+
     results.forEach((result, index) => {
       const serviceName = services[index].name;
-      
+
       if (result.status === 'fulfilled') {
         // Copy the individual service health result
         microservicesHealth[serviceName] = result.value[serviceName];
@@ -153,18 +153,18 @@ export class HealthController {
         allHealthy = false;
         microservicesHealth[serviceName] = {
           status: 'down',
-          error: result.reason?.message || 'Unknown error'
+          error: result.reason?.message || 'Unknown error',
         };
       }
     });
-    
+
     // Add an overall status
     microservicesHealth['microservices'] = {
       status: allHealthy ? 'up' : 'down',
       servicesChecked: services.length,
-      servicesUp: results.filter(r => r.status === 'fulfilled').length
+      servicesUp: results.filter(r => r.status === 'fulfilled').length,
     };
-    
+
     return microservicesHealth;
   }
 
@@ -172,7 +172,7 @@ export class HealthController {
   private async checkService(name: string, host: string, port: string): Promise<HealthIndicatorResult> {
     const serviceUrl = `http://${host}:${port}/health`;
     this.logger.debug(`Checking health of ${name} at ${serviceUrl}`);
-    
+
     try {
       // http.pingCheck already returns HealthIndicatorResult
       return await this.http.pingCheck(name, serviceUrl);

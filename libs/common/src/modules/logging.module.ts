@@ -7,7 +7,7 @@ import { LoggerModule } from 'nestjs-pino';
       pinoHttp: {
         //level: 'debug',
         formatters: {
-          level: (label) => {
+          level: label => {
             return { level: label.toUpperCase() };
           },
         },
