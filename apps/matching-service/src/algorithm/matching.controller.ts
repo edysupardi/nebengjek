@@ -1,9 +1,9 @@
-import { Controller, Post, Body, Get, Param, Query, UseGuards, Logger } from '@nestjs/common';
-import { MatchingService } from './matching.service';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
+import { Body, Controller, Get, Logger, Post, Query, UseGuards } from '@nestjs/common';
+import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { FindMatchDto } from './dto/find-match.dto';
 import { MatchResponseDto } from './dto/match-response.dto';
-import { MessagePattern, EventPattern } from '@nestjs/microservices';
-import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
+import { MatchingService } from './matching.service';
 
 @Controller('matching')
 export class MatchingController {
@@ -88,17 +88,25 @@ export class MatchingController {
           totalFound: transformedDrivers.length,
           excludedCount: (data.excludeDrivers || []).length,
         };
-      }
+      } else {
+        let errorReason = 'No drivers available';
 
-      // Return empty drivers if no match
-      this.logger.warn(`No drivers found for RPC request at (${data.latitude}, ${data.longitude}) after exclusions`);
-      return {
-        success: true,
-        drivers: [],
-        searchRadius: findMatchDto.radius,
-        totalFound: 0,
-        excludedCount: (data.excludeDrivers || []).length,
-      };
+        if (result.message?.includes('sedang dalam trip')) {
+          errorReason = 'All nearby drivers are currently busy with active trips';
+        } else if (result.message?.includes('tidak tersedia')) {
+          errorReason = 'No drivers online in the area';
+        }
+
+        this.logger.warn(`No drivers found for RPC request: ${errorReason}`);
+        return {
+          success: true,
+          drivers: [],
+          searchRadius: findMatchDto.radius,
+          totalFound: 0,
+          excludedCount: (data.excludeDrivers || []).length,
+          reason: errorReason,
+        };
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error in findDrivers RPC: ${errorMessage}`, error);
@@ -118,10 +126,20 @@ export class MatchingController {
   @MessagePattern('checkDriverAvailability')
   async checkDriverAvailability(data: { driverId: string; customerId?: string }) {
     try {
-      this.logger.log(`Checking availability for driver ${data.driverId}`);
+      this.logger.log(
+        `Checking availability for driver ${data.driverId}${data.customerId ? ` for customer ${data.customerId}` : ''}`,
+      );
 
-      // Use existing matching service method
       const availability = await this.matchingService.checkDriverAvailability(data.driverId, data.customerId);
+
+      // ===== ENHANCED LOGGING =====
+      if (!availability.isAvailable) {
+        this.logger.warn(
+          `Driver ${data.driverId} unavailable: ${availability.reason} (status: ${availability.status})`,
+        );
+      } else {
+        this.logger.log(`Driver ${data.driverId} is available for matching`);
+      }
 
       return {
         success: true,

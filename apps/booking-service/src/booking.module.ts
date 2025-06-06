@@ -1,14 +1,14 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BookingController } from '@app/booking/booking.controller';
 import { BookingService } from '@app/booking/booking.service';
 import { BookingRepository } from '@app/booking/repositories/booking.repository';
-import { PrismaService, RedisModule } from '@app/database';
-import { ClientsModule, Transport } from '@nestjs/microservices';
-import { HttpModule } from '@nestjs/axios';
-import { LoggingModule } from '@app/common/modules/logging.module';
 import { HealthModule } from '@app/common';
+import { LoggingModule } from '@app/common/modules/logging.module';
+import { PrismaService, RedisModule } from '@app/database';
 import { MessagingModule } from '@app/messaging';
+import { HttpModule } from '@nestjs/axios';
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 
 /**
  * @module BookingModule
@@ -24,7 +24,7 @@ import { MessagingModule } from '@app/messaging';
     LoggingModule,
     MessagingModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: () => ({
         serviceName: 'booking-service',
       }),
       inject: [ConfigService],
@@ -32,6 +32,7 @@ import { MessagingModule } from '@app/messaging';
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
+        // eslint-disable-next-line no-undef
         const Redis = require('ioredis');
         return {
           redis: new Redis({

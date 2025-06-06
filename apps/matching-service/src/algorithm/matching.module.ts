@@ -1,13 +1,13 @@
-import { Module } from '@nestjs/common';
-import { MatchingController } from './matching.controller';
-import { MatchingService } from './matching.service';
+import { HealthModule } from '@app/common';
+import { LoggingModule } from '@app/common/modules/logging.module';
+import { PrismaService } from '@app/database';
 import { PrismaModule } from '@app/database/prisma/prisma.module';
 import { RedisModule } from '@app/database/redis/redis.module';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { LoggingModule } from '@app/common/modules/logging.module';
 import { MessagingModule } from '@app/messaging';
-import { HealthModule } from '@app/common';
-import { PrismaService } from '@app/database';
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MatchingController } from './matching.controller';
+import { MatchingService } from './matching.service';
 
 @Module({
   imports: [
@@ -20,7 +20,7 @@ import { PrismaService } from '@app/database';
     LoggingModule,
     MessagingModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: () => ({
         serviceName: 'booking-service',
       }),
       inject: [ConfigService],
@@ -28,6 +28,7 @@ import { PrismaService } from '@app/database';
     HealthModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
+        // eslint-disable-next-line no-undef
         const Redis = require('ioredis');
         return {
           redis: new Redis({
@@ -46,6 +47,7 @@ import { PrismaService } from '@app/database';
     {
       provide: 'REDIS_CLIENT',
       useFactory: (configService: ConfigService) => {
+        // eslint-disable-next-line no-undef
         const Redis = require('ioredis');
         return new Redis({
           host: configService.get('REDIS_HOST', 'redis'),
