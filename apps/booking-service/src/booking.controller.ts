@@ -1,16 +1,17 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, Query, Logger } from '@nestjs/common';
 import { BookingService } from '@app/booking/booking.service';
 import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
 import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.dto';
+import { Roles, UserRole } from '@app/common';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
-import { Booking, Roles, UserRole } from '@app/common';
+import { Body, Controller, Delete, Get, Logger, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { MessagePattern } from '@nestjs/microservices';
 
 @Controller('bookings')
 export class BookingController {
   private readonly logger = new Logger(BookingController.name);
+  // eslint-disable-next-line no-unused-vars
   constructor(private readonly bookingService: BookingService) {}
 
   @UseGuards(TrustedGatewayGuard)

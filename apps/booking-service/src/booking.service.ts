@@ -1,20 +1,20 @@
-import {
-  Injectable,
-  Inject,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { BookingRepository } from './repositories/booking.repository';
 import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
-import { ClientProxy } from '@nestjs/microservices';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { BookingNotification, NearbyDriver } from '@app/common';
+import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { MessagingService } from '@app/messaging';
 import { BookingEvents } from '@app/messaging/events/event-types';
+import { HttpService } from '@nestjs/axios';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
+import { BookingRepository } from './repositories/booking.repository';
 
 @Injectable()
 export class BookingService {
@@ -98,6 +98,15 @@ export class BookingService {
         // Send notifications to nearby drivers
         if (nearbyDriversResponse && nearbyDriversResponse.drivers && nearbyDriversResponse.drivers.length > 0) {
           this.logger.log(`Found ${nearbyDriversResponse.drivers.length} nearby drivers for booking ${booking.id}`);
+
+          const eligibleDriverIds = nearbyDriversResponse.drivers.map((driver: NearbyDriver) => driver.userId);
+          await this.executeWithRetry(async () => {
+            await this.redis.sadd(`booking:${booking.id}:eligible-drivers`, ...eligibleDriverIds);
+            // Set expiry 2 hours (booking timeout)
+            await this.redis.expire(`booking:${booking.id}:eligible-drivers`, 7200);
+          });
+          this.logger.log(`Stored ${eligibleDriverIds.length} eligible drivers for booking ${booking.id}`);
+
           nearbyDriversResponse.drivers.forEach((driver: NearbyDriver) => {
             this.notificationServiceClient.emit('booking.new', {
               bookingId: booking.id,
@@ -225,6 +234,18 @@ export class BookingService {
         throw new BadRequestException(`Booking is already ${booking.status}`);
       }
 
+      const isEligible = await this.isDriverEligibleForBooking(bookingId, driverId);
+      if (!isEligible) {
+        this.logger.warn(`Driver ${driverId} is not eligible to accept booking ${bookingId}`);
+
+        // Log eligible drivers for debugging
+        const eligibleDrivers = await this.getEligibleDrivers(bookingId);
+        this.logger.warn(`Eligible drivers for booking ${bookingId}: [${eligibleDrivers.join(', ')}]`);
+
+        throw new UnauthorizedException('You are not eligible to accept this booking. Only nearby drivers can accept.');
+      }
+      this.logger.log(`Driver ${driverId} is eligible to accept booking ${bookingId}`);
+
       const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.ACCEPTED,
         driverId,
@@ -249,9 +270,19 @@ export class BookingService {
         driverId,
       });
 
+      // Clean up eligible drivers list setelah accepted
+      try {
+        await this.redis.del(`booking:${bookingId}:eligible-drivers`);
+        this.logger.log(`Cleaned up eligible drivers list for accepted booking ${bookingId}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(`Failed to clean up eligible drivers list: ${errorMessage}`);
+      }
+
       return updatedBooking;
     } catch (error) {
-      this.logger.error(`Failed to accept booking ${bookingId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to accept booking ${bookingId}: ${errorMessage}`, error);
       throw error;
     }
   }
@@ -337,6 +368,16 @@ export class BookingService {
           customerId: booking.customerId,
           cancelledBy: 'driver',
         });
+      }
+
+      // Clean up eligible drivers list
+      try {
+        await this.redis.del(`booking:${bookingId}:eligible-drivers`);
+        await this.redis.del(`booking:${bookingId}:rejected-drivers`);
+        this.logger.log(`Cleaned up driver lists for cancelled booking ${bookingId}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(`Failed to clean up driver lists: ${errorMessage}`);
       }
 
       return updatedBooking;
@@ -475,5 +516,33 @@ export class BookingService {
       }
     }
     throw lastError;
+  }
+
+  /**
+   * Check if driver is eligible to accept this booking
+   */
+  private async isDriverEligibleForBooking(bookingId: string, driverId: string): Promise<boolean> {
+    try {
+      const isEligible = await this.redis.sismember(`booking:${bookingId}:eligible-drivers`, driverId);
+      return isEligible === 1;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error checking driver eligibility: ${errorMessage}`);
+      return false; // Fail safe - reject if can't verify
+    }
+  }
+
+  /**
+   * Get all eligible drivers for a booking
+   */
+  private async getEligibleDrivers(bookingId: string): Promise<string[]> {
+    try {
+      const eligibleDrivers = await this.redis.smembers(`booking:${bookingId}:eligible-drivers`);
+      return eligibleDrivers || [];
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error getting eligible drivers: ${errorMessage}`);
+      return [];
+    }
   }
 }
