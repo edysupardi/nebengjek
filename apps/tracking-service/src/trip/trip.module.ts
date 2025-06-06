@@ -56,12 +56,7 @@ import { HttpModule } from '@nestjs/axios';
     ]),
   ],
   controllers: [TripController],
-  providers: [
-    TripService,
-    TripRepository,
-    PrismaService,
-    TripGateway,
-  ],
+  providers: [TripService, TripRepository, PrismaService, TripGateway],
   exports: [TripService, TripRepository],
 })
 export class TripModule {}

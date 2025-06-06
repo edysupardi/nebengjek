@@ -8,28 +8,30 @@ import { ref } from 'process';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
+
   // Get configuration
   const configService = app.get(ConfigService);
   const port = configService.get<number>('API_GATEWAY_PORT', 3000);
-  
+
   // Global prefix
   app.setGlobalPrefix('api');
-  
+
   // Global pipes and interceptors
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-    forbidNonWhitelisted: true,
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
   const moduleRef = app.select(AppModule);
   const reflector = moduleRef.get(Reflector);
   const excludedPaths = [''];
   app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths));
-  
+
   // CORS
   app.enableCors();
-  
+
   // Swagger setup
   const config = new DocumentBuilder()
     .setTitle('NebengJek API')
@@ -39,7 +41,7 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
-  
+
   await app.listen(port);
   console.log(`API Gateway is running on port ${port}`);
 }

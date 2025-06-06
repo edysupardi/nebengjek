@@ -39,7 +39,7 @@ export class RateLimiterGuard implements CanActivate {
 
     // Use Redis to track request counts
     const current = await this.redis.incr(key);
-    
+
     if (current === 1) {
       await this.redis.expire(key, this.ttl);
     }
@@ -56,14 +56,11 @@ export class RateLimiterGuard implements CanActivate {
   private generateKey(request: Request): string {
     // Create key based on IP address or API key or user ID
     // For this implementation, we'll use IP address
-    const ip = request.ip || 
-              request.ips?.[0] || 
-              request.headers['x-forwarded-for'] || 
-              'unknown';
-    
+    const ip = request.ip || request.ips?.[0] || request.headers['x-forwarded-for'] || 'unknown';
+
     // Add path to make rate limit specific to endpoints
     const path = request.path;
-    
+
     return `rate_limit:${ip}:${path}`;
   }
 }

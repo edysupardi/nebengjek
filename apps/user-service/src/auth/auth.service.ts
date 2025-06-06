@@ -20,13 +20,13 @@ export class AuthService {
     private userService: UserService,
     private jwtService: JwtService,
     private configService: ConfigService,
-    @Inject('REDIS_CLIENT') private redis: any // Inject Redis client
+    @Inject('REDIS_CLIENT') private redis: any, // Inject Redis client
   ) {
     // Cek koneksi Redis
     this.redis.on('connect', () => {
-      this.logger.log('Redis connected')
+      this.logger.log('Redis connected');
     });
-    this.redis.on('error', (err: any) =>{
+    this.redis.on('error', (err: any) => {
       this.logger.error('Redis error', err);
     });
   }
@@ -45,9 +45,9 @@ export class AuthService {
     }
     const payload = {
       sub: user.id,
-      role: user.role
+      role: user.role,
     };
-    
+
     // Generate access token
     const accessToken = this.jwtService.sign(payload, {
       secret: this.configService.get('JWT_ACCESS_SECRET'),
@@ -60,14 +60,14 @@ export class AuthService {
       {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
         expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN'),
-      }
+      },
     );
 
     await this.redis.set(
-      `refresh_token:${user.id}`, 
-      refreshToken, 
+      `refresh_token:${user.id}`,
+      refreshToken,
       'EX', // Set expiration time
-      60 * 60 * 24 * 7 // 7 hari dalam detik (sesuaikan dengan JWT_REFRESH_EXPIRES_IN)
+      60 * 60 * 24 * 7, // 7 hari dalam detik (sesuaikan dengan JWT_REFRESH_EXPIRES_IN)
     );
 
     this.logger.log(`User ${user.id} logged in successfully`);
@@ -80,20 +80,20 @@ export class AuthService {
   async refreshToken(user: number, refreshToken: string): Promise<RefreshTokenResponseDto> {
     // Verifikasi refresh_token & cek di Redis/DB
     // const payload = this.jwtService.verify(refreshToken, { secret: 'REFRESH_SECRET' });
-    const payload = this.jwtService.verify(refreshToken, { 
-      secret: this.configService.get('JWT_REFRESH_SECRET') // Pakai env variable
-    })
-    if(!this.redis) {
+    const payload = this.jwtService.verify(refreshToken, {
+      secret: this.configService.get('JWT_REFRESH_SECRET'), // Pakai env variable
+    });
+    if (!this.redis) {
       this.logger.error('Redis client is not initialized');
       throw new Error('Redis connection failed');
     }
     const storedToken = await this.redis.get(`refresh_token:${payload.sub}`);
-  
-    if (storedToken !== refreshToken){
+
+    if (storedToken !== refreshToken) {
       this.logger.error(`Invalid refresh token for user ID: ${payload.sub}`);
       throw new UnauthorizedException();
     }
-    
+
     this.logger.log(`Generate refresh token for user ID: ${payload.sub}`);
     // Generate access_token baru
     return {

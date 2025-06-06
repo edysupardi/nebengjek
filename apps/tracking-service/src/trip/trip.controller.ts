@@ -11,15 +11,12 @@ import { Roles, UserRole } from '@app/common';
 @UseGuards(TrustedGatewayGuard)
 export class TripController {
   private readonly logger = new Logger(TripController.name);
-  constructor(private readonly tripService: TripService) { }
+  constructor(private readonly tripService: TripService) {}
 
   // Driver starts physical trip (after pickup)
   @Post('start')
   @Roles(UserRole.DRIVER)
-  async startTrip(
-    @CurrentUser() user: any,
-    @Body() startTripDto: StartTripDto
-  ) {
+  async startTrip(@CurrentUser() user: any, @Body() startTripDto: StartTripDto) {
     this.logger.log(`Driver ${user.userId} is starting trip for booking ${startTripDto.bookingId}`);
     return this.tripService.startTrip(user.userId, startTripDto);
   }
@@ -27,11 +24,7 @@ export class TripController {
   // Driver ends trip - triggers everything (booking completion, payment, etc.)
   @Put(':tripId/end')
   @Roles(UserRole.DRIVER)
-  async endTrip(
-    @CurrentUser() user: any,
-    @Param('tripId') tripId: string,
-    @Body() endTripDto: EndTripDto
-  ) {
+  async endTrip(@CurrentUser() user: any, @Param('tripId') tripId: string, @Body() endTripDto: EndTripDto) {
     this.logger.log(`Driver ${user.userId} is ending trip ${tripId}`);
     return this.tripService.endTrip(tripId, user.userId, endTripDto);
   }
@@ -42,7 +35,7 @@ export class TripController {
   async updateTripLocation(
     @CurrentUser() user: any,
     @Param('tripId') tripId: string,
-    @Body() updateLocationDto: UpdateTripLocationDto
+    @Body() updateLocationDto: UpdateTripLocationDto,
   ) {
     // Reduce logging for frequent location updates
     return this.tripService.updateTripLocation(tripId, user.userId, updateLocationDto);

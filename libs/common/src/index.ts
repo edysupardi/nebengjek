@@ -6,7 +6,7 @@ export * from './health/health.controller';
 // Export entities
 export * from './entities';
 
-// Export enums  
+// Export enums
 export * from './enums';
 
 // Export constants

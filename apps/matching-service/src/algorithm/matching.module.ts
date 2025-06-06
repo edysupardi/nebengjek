@@ -38,7 +38,7 @@ import { PrismaService } from '@app/database';
         };
       },
       inject: [ConfigService],
-    })
+    }),
   ],
   controllers: [MatchingController],
   providers: [
@@ -53,7 +53,7 @@ import { PrismaService } from '@app/database';
         });
       },
       inject: [ConfigService],
-    }
+    },
   ],
   exports: [MatchingService],
 })

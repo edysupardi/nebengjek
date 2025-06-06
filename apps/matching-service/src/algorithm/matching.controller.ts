@@ -8,13 +8,15 @@ import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 @Controller('matching')
 export class MatchingController {
   private readonly logger = new Logger(MatchingController.name);
-  constructor(private readonly matchingService: MatchingService) { }
+  constructor(private readonly matchingService: MatchingService) {}
 
   // ===== EXISTING HTTP ENDPOINTS =====
   @Post('find')
   @UseGuards(TrustedGatewayGuard)
   async findMatch(@Body() findMatchDto: FindMatchDto): Promise<MatchResponseDto> {
-    this.logger.log(`Finding match for customer ID: ${findMatchDto.customerId} at (${findMatchDto.latitude}, ${findMatchDto.longitude}) with radius ${findMatchDto.radius} km`);
+    this.logger.log(
+      `Finding match for customer ID: ${findMatchDto.customerId} at (${findMatchDto.latitude}, ${findMatchDto.longitude}) with radius ${findMatchDto.radius} km`,
+    );
     return this.matchingService.findDrivers(findMatchDto);
   }
 
@@ -23,13 +25,13 @@ export class MatchingController {
   async findNearbyDrivers(
     @Query('latitude') latitude: number,
     @Query('longitude') longitude: number,
-    @Query('radius') radius: number = 1
+    @Query('radius') radius: number = 1,
   ): Promise<MatchResponseDto> {
     const findMatchDto: FindMatchDto = {
       customerId: null, // Tidak perlu customerId untuk pencarian umum
       latitude,
       longitude,
-      radius
+      radius,
     };
     this.logger.log(`Finding nearby drivers at (${latitude}, ${longitude}) with radius ${radius} km`);
     return this.matchingService.findDrivers(findMatchDto);
@@ -47,7 +49,7 @@ export class MatchingController {
       radius: data.radius || 1,
       excludeDrivers: data.excludeDrivers || [],
       preferredDrivers: data.preferredDrivers || [],
-      bookingId: data.bookingId || null
+      bookingId: data.bookingId || null,
     };
 
     try {
@@ -67,22 +69,24 @@ export class MatchingController {
           location: {
             // Use lastLatitude/lastLongitude from DriverMatchDto
             latitude: driver.lastLatitude || data.latitude + (Math.random() - 0.5) * 0.01,
-            longitude: driver.lastLongitude || data.longitude + (Math.random() - 0.5) * 0.01
+            longitude: driver.lastLongitude || data.longitude + (Math.random() - 0.5) * 0.01,
           },
           estimatedArrival: Math.ceil(driver.distance * 2), // rough estimate: 2 min per km
           // Safely access customer-specific properties
           ...(driver.hasOwnProperty('isPreferred') && { isPreferred: driver.isPreferred }),
-          ...(driver.hasOwnProperty('previousTripCount') && { previousTripCount: driver.previousTripCount })
+          ...(driver.hasOwnProperty('previousTripCount') && { previousTripCount: driver.previousTripCount }),
         }));
 
-        this.logger.log(`Found ${transformedDrivers.length} drivers for RPC request (excluded: ${(data.excludeDrivers || []).length})`);
+        this.logger.log(
+          `Found ${transformedDrivers.length} drivers for RPC request (excluded: ${(data.excludeDrivers || []).length})`,
+        );
 
         return {
           success: true,
           drivers: transformedDrivers,
           searchRadius: findMatchDto.radius,
           totalFound: transformedDrivers.length,
-          excludedCount: (data.excludeDrivers || []).length
+          excludedCount: (data.excludeDrivers || []).length,
         };
       }
 
@@ -93,7 +97,7 @@ export class MatchingController {
         drivers: [],
         searchRadius: findMatchDto.radius,
         totalFound: 0,
-        excludedCount: (data.excludeDrivers || []).length
+        excludedCount: (data.excludeDrivers || []).length,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -101,7 +105,7 @@ export class MatchingController {
       return {
         success: false,
         drivers: [],
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -121,7 +125,7 @@ export class MatchingController {
 
       return {
         success: true,
-        ...availability
+        ...availability,
       };
     } catch (error) {
       this.logger.error(`Error checking driver availability:`, error);
@@ -129,7 +133,7 @@ export class MatchingController {
         success: false,
         driverId: data.driverId,
         isAvailable: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred'
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
       };
     }
   }
@@ -156,7 +160,7 @@ export class MatchingController {
         radius: 2, // 2km radius for booking matching
         excludeDrivers: data.excludeDrivers || [],
         preferredDrivers: data.preferredDrivers || [],
-        bookingId: data.bookingId
+        bookingId: data.bookingId,
       };
 
       const driversResponse = await this.matchingService.findDrivers(findMatchDto);
@@ -167,7 +171,7 @@ export class MatchingController {
           success: false,
           message: 'No available drivers found after filtering',
           bookingId: data.bookingId,
-          excludedCount: (data.excludeDrivers || []).length
+          excludedCount: (data.excludeDrivers || []).length,
         };
       }
 
@@ -190,18 +194,18 @@ export class MatchingController {
           estimatedArrival: Math.ceil(bestDriver.distance * 2),
           // Safely access customer-specific properties
           ...(bestDriver.hasOwnProperty('isPreferred') && { isPreferred: bestDriver.isPreferred }),
-          ...(bestDriver.hasOwnProperty('previousTripCount') && { previousTripCount: bestDriver.previousTripCount })
+          ...(bestDriver.hasOwnProperty('previousTripCount') && { previousTripCount: bestDriver.previousTripCount }),
         },
         matchedAt: new Date().toISOString(),
         totalCandidates: driversResponse.data.length,
-        excludedCount: (data.excludeDrivers || []).length
+        excludedCount: (data.excludeDrivers || []).length,
       };
     } catch (error) {
       this.logger.error('Error matching driver to booking:', error);
       return {
         success: false,
         bookingId: data.bookingId,
-        error: error instanceof Error ? error.message : 'An unknown error occurred'
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
       };
     }
   }
@@ -212,25 +216,19 @@ export class MatchingController {
    * TCP Event Pattern: Handle driver location updates
    */
   @EventPattern('driver.location.update')
-  async handleDriverLocationUpdate(data: {
-    driverId: string;
-    latitude: number;
-    longitude: number;
-    timestamp: string;
-  }) {
+  async handleDriverLocationUpdate(data: { driverId: string; latitude: number; longitude: number; timestamp: string }) {
     try {
       this.logger.log(`Driver ${data.driverId} location updated: ${data.latitude}, ${data.longitude}`);
 
       // TODO: Integrate with existing MatchingService to update driver location
       // This would typically update Redis cache for real-time matching
-
     } catch (error) {
       this.logger.error('Error updating driver location:', error);
     }
   }
 
   /**
-   * TCP Event Pattern: Handle driver status changes  
+   * TCP Event Pattern: Handle driver status changes
    */
   @EventPattern('driver.status.change')
   async handleDriverStatusChange(data: {
@@ -242,7 +240,6 @@ export class MatchingController {
       this.logger.log(`Driver ${data.driverId} status changed to ${data.status}`);
 
       // TODO: Integrate with existing MatchingService to update driver status
-
     } catch (error) {
       this.logger.error('Error updating driver status:', error);
     }
@@ -252,11 +249,7 @@ export class MatchingController {
    * TCP Event Pattern: Handle booking rejection from driver
    */
   @EventPattern('booking.rejected.by.driver')
-  async handleBookingRejected(data: {
-    bookingId: string;
-    driverId: string;
-    reason?: string;
-  }) {
+  async handleBookingRejected(data: { bookingId: string; driverId: string; reason?: string }) {
     try {
       this.logger.log(`Driver ${data.driverId} rejected booking ${data.bookingId}`);
 
@@ -264,7 +257,6 @@ export class MatchingController {
       await this.matchingService.addBookingRejectedDriver(data.bookingId, data.driverId);
 
       this.logger.log(`Driver ${data.driverId} added to rejected list for booking ${data.bookingId}`);
-
     } catch (error) {
       this.logger.error('Error handling booking rejection:', error);
     }
@@ -289,7 +281,7 @@ export class MatchingController {
         latitude: data.latitude,
         longitude: data.longitude,
         radius: data.radius || 3, // Slightly larger radius for re-matching
-        bookingId: data.bookingId // This will auto-exclude rejected drivers
+        bookingId: data.bookingId, // This will auto-exclude rejected drivers
       };
 
       const result = await this.matchingService.findDriversForReMatch(data.bookingId, findMatchDto);
@@ -309,10 +301,10 @@ export class MatchingController {
             estimatedArrival: Math.ceil(driver.distance * 2),
             // Safely access customer-specific properties
             ...(driver.hasOwnProperty('isPreferred') && { isPreferred: driver.isPreferred }),
-            ...(driver.hasOwnProperty('previousTripCount') && { previousTripCount: driver.previousTripCount })
+            ...(driver.hasOwnProperty('previousTripCount') && { previousTripCount: driver.previousTripCount }),
           })),
           totalFound: result.data.length,
-          isReMatch: true
+          isReMatch: true,
         };
       }
 
@@ -320,16 +312,15 @@ export class MatchingController {
         success: false,
         bookingId: data.bookingId,
         message: 'No available drivers for re-matching',
-        isReMatch: true
+        isReMatch: true,
       };
-
     } catch (error) {
       this.logger.error('Error re-matching drivers:', error);
       return {
         success: false,
         bookingId: data.bookingId,
         error: error instanceof Error ? error.message : 'An unknown error occurred',
-        isReMatch: true
+        isReMatch: true,
       };
     }
   }

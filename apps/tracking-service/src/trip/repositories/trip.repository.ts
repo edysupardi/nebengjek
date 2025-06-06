@@ -7,19 +7,23 @@ import { Trip as PrismaTrip, Prisma } from '@prisma/client';
 export class TripRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  private transformTripToDomain(prismaTrip: PrismaTrip & { 
-    booking?: { 
-      customer: any;
-      driver: any | null;
-    } | null 
-  }): Trip {
+  private transformTripToDomain(
+    prismaTrip: PrismaTrip & {
+      booking?: {
+        customer: any;
+        driver: any | null;
+      } | null;
+    },
+  ): Trip {
     return {
       ...prismaTrip,
-      booking: prismaTrip.booking ? {
-        ...prismaTrip.booking,
-        driver: prismaTrip.booking.driver ?? undefined,
-        driverId: prismaTrip.booking.driver.id ?? undefined,
-      } : undefined
+      booking: prismaTrip.booking
+        ? {
+            ...prismaTrip.booking,
+            driver: prismaTrip.booking.driver ?? undefined,
+            driverId: prismaTrip.booking.driver.id ?? undefined,
+          }
+        : undefined,
     } as Trip;
   }
 
@@ -52,7 +56,7 @@ export class TripRepository {
       },
     });
 
-    if(!prismaTrip) return null;
+    if (!prismaTrip) return null;
     return this.transformTripToDomain(prismaTrip);
   }
 
@@ -86,7 +90,7 @@ export class TripRepository {
       },
     });
 
-    if(!prismaTrip) return null;
+    if (!prismaTrip) return null;
     return this.transformTripToDomain(prismaTrip);
   }
 
@@ -112,10 +116,7 @@ export class TripRepository {
     const prismaTrips = await this.prisma.trip.findMany({
       where: {
         booking: {
-          OR: [
-            { customerId: userId },
-            { driverId: userId },
-          ],
+          OR: [{ customerId: userId }, { driverId: userId }],
         },
       },
       include: {
@@ -133,7 +134,7 @@ export class TripRepository {
 
     return prismaTrips.map(trip => this.transformTripToDomain(trip));
   }
-  
+
   async findIncompleteTrips(): Promise<Trip[]> {
     const prismaTrips = await this.prisma.trip.findMany({
       where: {

@@ -9,7 +9,7 @@ import { MessagePattern, EventPattern } from '@nestjs/microservices';
 export class NotificationController {
   private readonly logger = new Logger(NotificationController.name);
 
-  constructor(private readonly notificationService: NotificationService) { }
+  constructor(private readonly notificationService: NotificationService) {}
 
   // ===== EXISTING HTTP ENDPOINTS (with guard) =====
   @Get()
@@ -53,16 +53,15 @@ export class NotificationController {
         message: data.message,
         type: data.data?.type || 'general',
         relatedId: data.data?.bookingId || data.data?.tripId,
-        data: data.data
+        data: data.data,
       });
 
       return result;
-
     } catch (error) {
       this.logger.error('Error sending notification:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred'
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
       };
     }
   }
@@ -71,11 +70,7 @@ export class NotificationController {
    * TCP Message Pattern: Get notification history for user
    */
   @MessagePattern('get.notifications')
-  async getNotifications(data: {
-    userId: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async getNotifications(data: { userId: string; page?: number; limit?: number }) {
     try {
       this.logger.log(`Getting notifications for user ${data.userId}`);
 
@@ -88,15 +83,14 @@ export class NotificationController {
         pagination: {
           page: data.page || 1,
           limit: data.limit || 10,
-          total: Array.isArray(notifications) ? notifications.length : 0
-        }
+          total: Array.isArray(notifications) ? notifications.length : 0,
+        },
       };
-
     } catch (error) {
       this.logger.error('Error getting notifications:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred'
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
       };
     }
   }
@@ -131,10 +125,9 @@ export class NotificationController {
           bookingId: data.bookingId,
           type: 'new_booking',
           distance: data.distance,
-          pickupLocation: data.pickupLocation
-        }
+          pickupLocation: data.pickupLocation,
+        },
       });
-
     } catch (error) {
       this.logger.error('Error handling new booking notification:', error);
     }
@@ -165,10 +158,9 @@ export class NotificationController {
           bookingId: data.bookingId,
           driverId: data.driverId,
           type: 'booking_accepted',
-          estimatedArrival: data.estimatedArrival
-        }
+          estimatedArrival: data.estimatedArrival,
+        },
       });
-
     } catch (error) {
       this.logger.error('Error handling booking accepted notification:', error);
     }
@@ -200,26 +192,25 @@ export class NotificationController {
             bookingId: data.bookingId,
             type: 'booking_cancelled',
             cancelledBy: 'customer',
-            reason: data.reason
-          }
+            reason: data.reason,
+          },
         });
       } else if (data.cancelledBy === 'driver' && data.customerId) {
         // Notify customer about driver cancellation
         await this.notificationService.createNotification({
           userId: data.customerId,
           title: 'Booking Cancelled',
-          message: 'Driver has cancelled the booking. We\'re finding you another driver.',
+          message: "Driver has cancelled the booking. We're finding you another driver.",
           type: 'booking_cancelled',
           relatedId: data.bookingId,
           data: {
             bookingId: data.bookingId,
             type: 'booking_cancelled',
             cancelledBy: 'driver',
-            reason: data.reason
-          }
+            reason: data.reason,
+          },
         });
       }
-
     } catch (error) {
       this.logger.error('Error handling booking cancelled notification:', error);
     }
@@ -249,10 +240,9 @@ export class NotificationController {
           bookingId: data.bookingId,
           driverId: data.driverId,
           type: 'trip_started',
-          estimatedArrival: data.estimatedArrival
-        }
+          estimatedArrival: data.estimatedArrival,
+        },
       });
-
     } catch (error) {
       this.logger.error('Error handling trip started notification:', error);
     }
@@ -285,11 +275,11 @@ export class NotificationController {
         data: {
           bookingId: data.bookingId,
           type: 'trip_completed',
-          tripDetails: data.tripDetails
-        }
+          tripDetails: data.tripDetails,
+        },
       });
 
-      // Notify driver about trip completion  
+      // Notify driver about trip completion
       if (data.driverId) {
         await this.notificationService.createNotification({
           userId: data.driverId,
@@ -300,11 +290,10 @@ export class NotificationController {
           data: {
             bookingId: data.bookingId,
             type: 'trip_completed',
-            tripDetails: data.tripDetails
-          }
+            tripDetails: data.tripDetails,
+          },
         });
       }
-
     } catch (error) {
       this.logger.error('Error handling trip completed notification:', error);
     }
@@ -337,10 +326,9 @@ export class NotificationController {
           bookingId: data.bookingId,
           driverId: data.driverId,
           type: 'driver_arrived',
-          location: data.location
-        }
+          location: data.location,
+        },
       });
-
     } catch (error) {
       this.logger.error('Error handling driver arrived notification:', error);
     }

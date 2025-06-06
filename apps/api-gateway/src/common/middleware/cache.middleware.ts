@@ -21,18 +21,18 @@ export class CacheMiddleware implements NestMiddleware {
 
     // Store original send
     const originalSend = res.send;
-    
+
     // Override send
     res.send = (body: any): Response => {
       // Cache successful responses for non-critical endpoints
       if (res.statusCode === 200 && !req.originalUrl.includes('/critical/')) {
         this.redisService.set(
-          cacheKey, 
-          body, 
-          300 // 5 minutes TTL
+          cacheKey,
+          body,
+          300, // 5 minutes TTL
         );
       }
-      
+
       return originalSend.call(res, body);
     };
 

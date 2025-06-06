@@ -30,7 +30,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
 
   async handleDisconnect(client: Socket): Promise<void> {
     this.logger.log(`Client disconnected: ${client.id}`);
-    
+
     // Remove client from user-socket mapping
     for (const [userId, sockets] of this.userSocketMap.entries()) {
       const updatedSockets = sockets.filter(socketId => socketId !== client.id);
@@ -45,12 +45,12 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   @SubscribeMessage('register')
   handleRegister(client: Socket, userId: string): void {
     this.logger.log(`User ${userId} registered with socket ${client.id}`);
-    
+
     const existingSockets = this.userSocketMap.get(userId) || [];
     if (!existingSockets.includes(client.id)) {
       this.userSocketMap.set(userId, [...existingSockets, client.id]);
     }
-    
+
     // Join user to a room with their ID for easier targeting
     client.join(`user:${userId}`);
   }

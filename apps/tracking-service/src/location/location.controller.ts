@@ -13,26 +13,23 @@ export class LocationController {
 
   // for real tracking location customer/driver
   @Post('update')
-  async updateLocation(
-    @CurrentUser() user: any,
-    @Body() updateLocationDto: UpdateLocationDto
-  ) {
-    this.logger.log(`Updating location for user ID: ${user.userId} to lat: ${updateLocationDto.latitude}, long: ${updateLocationDto.longitude}`);
-    return this.locationService.updateLocation(
-      user.userId,
-      updateLocationDto.latitude,
-      updateLocationDto.longitude
+  async updateLocation(@CurrentUser() user: any, @Body() updateLocationDto: UpdateLocationDto) {
+    this.logger.log(
+      `Updating location for user ID: ${user.userId} to lat: ${updateLocationDto.latitude}, long: ${updateLocationDto.longitude}`,
     );
+    return this.locationService.updateLocation(user.userId, updateLocationDto.latitude, updateLocationDto.longitude);
   }
 
   @Post('nearby-drivers')
   @HttpCode(200)
   async getNearbyDrivers(@Body() getNearbyDriversDto: GetNearbyDriversDto) {
-    this.logger.log(`Getting nearby drivers for lat: ${getNearbyDriversDto.latitude}, long: ${getNearbyDriversDto.longitude}, radius: ${getNearbyDriversDto.radius}`);
+    this.logger.log(
+      `Getting nearby drivers for lat: ${getNearbyDriversDto.latitude}, long: ${getNearbyDriversDto.longitude}, radius: ${getNearbyDriversDto.radius}`,
+    );
     return this.locationService.getNearbyDrivers(
       getNearbyDriversDto.latitude,
       getNearbyDriversDto.longitude,
-      getNearbyDriversDto.radius
+      getNearbyDriversDto.radius,
     );
   }
 
@@ -47,7 +44,7 @@ export class LocationController {
   async getLocationHistory(
     @Param('userId') userId: string,
     @Query('startTime') startTime?: string,
-    @Query('endTime') endTime?: string
+    @Query('endTime') endTime?: string,
   ) {
     this.logger.log(`Getting location history for user ID: ${userId} from ${startTime} to ${endTime}`);
     return this.locationService.getLocationHistory(userId, startTime, endTime);

@@ -32,12 +32,7 @@ import { LoggingModule } from '@app/common/modules/logging.module';
     RedisModule.forRoot(),
     LoggingModule,
   ],
-  providers: [
-    LocationService,
-    LocationRepository,
-    PrismaService,
-    JwtStrategy,
-  ],
+  providers: [LocationService, LocationRepository, PrismaService, JwtStrategy],
   exports: [LocationService],
 })
 export class LocationModule {}

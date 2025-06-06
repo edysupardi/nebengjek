@@ -89,7 +89,7 @@ export class UserService {
       ...registerDto,
       password: hashedPassword,
     };
-    
+
     const newUser = await this.userRepository.create(userData);
     if (!newUser) {
       this.logger.error(`Failed to create user with email: ${registerDto.email}`);

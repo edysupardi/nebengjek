@@ -23,7 +23,7 @@ export class TransactionRepository {
         trip: true,
       },
     });
-    
+
     return result as unknown as Transaction;
   }
 
@@ -43,7 +43,7 @@ export class TransactionRepository {
         },
       },
     });
-    
+
     return result as unknown as Transaction;
   }
 
@@ -54,7 +54,7 @@ export class TransactionRepository {
         trip: true,
       },
     });
-    
+
     return result as unknown as Transaction;
   }
 
@@ -69,7 +69,7 @@ export class TransactionRepository {
         trip: true,
       },
     });
-    
+
     return result as unknown as Transaction;
   }
 
@@ -78,22 +78,22 @@ export class TransactionRepository {
       where: {
         trip: {
           booking: {
-            driverId: driverId
-          }
+            driverId: driverId,
+          },
         },
       },
       include: {
         trip: {
           include: {
-            booking: true
-          }
+            booking: true,
+          },
         },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
-    
+
     return results as unknown as Transaction[];
   }
 
@@ -102,22 +102,22 @@ export class TransactionRepository {
       where: {
         trip: {
           booking: {
-            customerId: customerId // or userId depending on your schema
-          }
+            customerId: customerId, // or userId depending on your schema
+          },
         },
       },
       include: {
         trip: {
           include: {
-            booking: true
-          }
+            booking: true,
+          },
         },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
-    
+
     return results as unknown as Transaction[];
   }
 }

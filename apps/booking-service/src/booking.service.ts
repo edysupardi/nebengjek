@@ -1,4 +1,11 @@
-import { Injectable, Inject, Logger, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { BookingRepository } from './repositories/booking.repository';
 import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
 import { ClientProxy } from '@nestjs/microservices';
@@ -19,8 +26,8 @@ export class BookingService {
     @Inject('NOTIFICATION_SERVICE') private notificationServiceClient: ClientProxy,
     @Inject('MATCHING_SERVICE') private matchingServiceClient: ClientProxy,
     @Inject('REDIS_CLIENT') private redis: any,
-    private readonly messagingService: MessagingService
-  ) { }
+    private readonly messagingService: MessagingService,
+  ) {}
 
   async createBooking(userId: string, createBookingDto: CreateBookingDto) {
     try {
@@ -61,7 +68,7 @@ export class BookingService {
             createdAt: new Date().toISOString(),
           }),
           'EX',
-          3600 // 1 hour expiry
+          3600, // 1 hour expiry
         );
       });
 
@@ -83,8 +90,8 @@ export class BookingService {
             this.matchingServiceClient.send('findDrivers', {
               latitude: createBookingDto.pickupLatitude,
               longitude: createBookingDto.pickupLongitude,
-              radius: 1 // 1km radius
-            })
+              radius: 1, // 1km radius
+            }),
           );
         });
 
@@ -100,7 +107,7 @@ export class BookingService {
               pickupLocation: {
                 latitude: createBookingDto.pickupLatitude,
                 longitude: createBookingDto.pickupLongitude,
-              }
+              },
             } as BookingNotification);
           });
         } else {
@@ -221,7 +228,7 @@ export class BookingService {
       const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.ACCEPTED,
         driverId,
-        acceptedAt: new Date()
+        acceptedAt: new Date(),
       });
 
       // Publish to messaging service
@@ -232,7 +239,7 @@ export class BookingService {
         driverName: updatedBooking.driver?.name || 'Driver',
         driverLatitude: updatedBooking.driver?.driverProfile?.lastLatitude || 0,
         driverLongitude: updatedBooking.driver?.driverProfile?.lastLongitude || 0,
-        estimatedArrivalTime: 0
+        estimatedArrivalTime: 0,
       });
 
       // Legacy notification for backward compatibility
@@ -264,7 +271,7 @@ export class BookingService {
 
       // Update booking with rejected timestamp
       await this.bookingRepository.update(bookingId, {
-        rejectedAt: new Date()
+        rejectedAt: new Date(),
       });
 
       // Store driver rejection in Redis to avoid re-matching
@@ -286,14 +293,9 @@ export class BookingService {
       }
 
       // Only allow cancellation for PENDING or ACCEPTED bookings
-      if (
-        booking.status !== BookingStatus.PENDING &&
-        booking.status !== BookingStatus.ACCEPTED
-      ) {
+      if (booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.ACCEPTED) {
         this.logger.warn(`Cannot cancel booking ${bookingId} with status ${booking.status}`);
-        throw new BadRequestException(
-          `Cannot cancel booking with status ${booking.status}`
-        );
+        throw new BadRequestException(`Cannot cancel booking with status ${booking.status}`);
       }
 
       // Verify that user is authorized to cancel
@@ -304,7 +306,7 @@ export class BookingService {
 
       const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.CANCELLED,
-        cancelledAt: new Date()
+        cancelledAt: new Date(),
       });
 
       // Determine who cancelled the booking
@@ -315,7 +317,7 @@ export class BookingService {
         bookingId,
         customerId: booking.customerId,
         driverId: booking.driverId ?? undefined,
-        cancelledBy
+        cancelledBy,
       });
 
       // Legacy notifications for backward compatibility
@@ -353,14 +355,9 @@ export class BookingService {
       }
 
       // Only allow deletion for CANCELLED or COMPLETED bookings
-      if (
-        booking.status !== BookingStatus.CANCELLED &&
-        booking.status !== BookingStatus.COMPLETED
-      ) {
+      if (booking.status !== BookingStatus.CANCELLED && booking.status !== BookingStatus.COMPLETED) {
         this.logger.warn(`Cannot delete booking ${bookingId} with status ${booking.status}`);
-        throw new BadRequestException(
-          `Cannot delete booking with status ${booking.status}`
-        );
+        throw new BadRequestException(`Cannot delete booking with status ${booking.status}`);
       }
 
       // Verify that user is authorized to delete
@@ -384,7 +381,7 @@ export class BookingService {
 
       const updatedBooking = await this.bookingRepository.update(bookingId, {
         status: BookingStatus.COMPLETED,
-        completedAt: completedAt
+        completedAt: completedAt,
       });
 
       // Publish booking completed event
@@ -393,15 +390,15 @@ export class BookingService {
         customerId: updatedBooking.customerId,
         tripDetails: {
           completedAt: completedAt,
-          status: 'COMPLETED'
-        }
+          status: 'COMPLETED',
+        },
       });
 
       // Legacy notification
       this.notificationServiceClient.emit('booking.completed', {
         bookingId: bookingId,
         customerId: updatedBooking.customerId,
-        driverId: updatedBooking.driverId
+        driverId: updatedBooking.driverId,
       });
 
       return updatedBooking;
@@ -415,7 +412,7 @@ export class BookingService {
     currentStatus: BookingStatus | any,
     newStatus: BookingStatus | any,
     userId: string,
-    booking: any
+    booking: any,
   ) {
     const isCustomer = userId === booking.customerId;
     const isDriver = userId === booking.driverId;
@@ -462,11 +459,7 @@ export class BookingService {
     this.logger.log(`Notified ${event} for booking ${booking.id}`);
   }
 
-  private async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    maxRetries = 3,
-    delay = 1000
-  ): Promise<T> {
+  private async executeWithRetry<T>(operation: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
     let lastError;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {

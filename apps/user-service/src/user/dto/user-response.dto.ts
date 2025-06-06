@@ -7,21 +7,21 @@ import { DriverProfileResponseDto } from '@app/user/dto/driver-profile-response.
 export class UserResponseDto {
   @ApiProperty({
     description: 'The unique identifier of the user',
-    example: '123e4567-e89b-12d3-a456-426614174000'
+    example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @Expose()
   id: string;
 
   @ApiProperty({
     description: 'User phone number',
-    example: '+6281234567890'
+    example: '+6281234567890',
   })
   @Expose()
   phone: string;
 
   @ApiProperty({
     description: 'User full name',
-    example: 'John Doe'
+    example: 'John Doe',
   })
   @Expose()
   name: string;
@@ -29,7 +29,7 @@ export class UserResponseDto {
   @ApiProperty({
     description: 'User email address',
     example: 'john.doe@example.com',
-    nullable: true
+    nullable: true,
   })
   @Expose()
   email: string | null;
@@ -37,21 +37,21 @@ export class UserResponseDto {
   @ApiProperty({
     description: 'User role in the system',
     enum: UserRole,
-    example: 'CUSTOMER'
+    example: 'CUSTOMER',
   })
   @Expose()
   role: UserRole;
 
   @ApiProperty({
     description: 'Timestamp when the user was created',
-    example: '2023-01-01T00:00:00Z'
+    example: '2023-01-01T00:00:00Z',
   })
   @Expose()
   createdAt: Date;
 
   @ApiProperty({
     description: 'Timestamp when the user was last updated',
-    example: '2023-01-01T00:00:00Z'
+    example: '2023-01-01T00:00:00Z',
   })
   @Expose()
   updatedAt: Date;
@@ -59,7 +59,7 @@ export class UserResponseDto {
   @ApiProperty({
     description: 'Driver profile information if user is a driver',
     type: () => DriverProfileResponseDto,
-    required: false
+    required: false,
   })
   @Expose()
   @Type(() => DriverProfileResponseDto)

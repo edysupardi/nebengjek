@@ -26,10 +26,10 @@ export class LoggingInterceptor implements NestInterceptor {
 
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
-    
+
     // Buat atau dapatkan request ID
-    const requestId = request.headers['x-request-id'] as string || uuidv4();
-    
+    const requestId = (request.headers['x-request-id'] as string) || uuidv4();
+
     // Tambahkan request ID ke header response jika belum ada
     if (!response.getHeader('x-request-id')) {
       response.setHeader('x-request-id', requestId);
@@ -38,7 +38,7 @@ export class LoggingInterceptor implements NestInterceptor {
     // Log request
     const { method, originalUrl, ip, headers, body, query } = request;
     const userAgent = headers['user-agent'] || '';
-    
+
     this.logger.info(`Request: ${method} ${originalUrl}`, {
       context: 'HttpRequest',
       requestId,
@@ -50,13 +50,13 @@ export class LoggingInterceptor implements NestInterceptor {
     });
 
     const now = Date.now();
-    
+
     return next.handle().pipe(
       tap({
         next: (data: any) => {
           // Log response success
           const responseTime = Date.now() - now;
-          
+
           this.logger.info(`Response: ${method} ${originalUrl} - ${response.statusCode} (${responseTime}ms)`, {
             context: 'HttpResponse',
             requestId,
@@ -64,14 +64,14 @@ export class LoggingInterceptor implements NestInterceptor {
             responseTime,
             responseSize: this.calculateResponseSize(data),
           });
-          
+
           // Tambahan untuk AWS X-Ray di production
           this.addXRayMetadata(requestId, method, originalUrl, responseTime);
         },
         error: (error: any) => {
           // Log response error
           const responseTime = Date.now() - now;
-          
+
           this.logger.error(`Error: ${method} ${originalUrl} - ${error.status || 500} (${responseTime}ms)`, {
             context: 'HttpError',
             requestId,
@@ -83,7 +83,7 @@ export class LoggingInterceptor implements NestInterceptor {
               stack: this.shouldLogStack() ? error.stack : undefined,
             },
           });
-          
+
           // Tambahan untuk AWS X-Ray di production
           this.addXRayMetadata(requestId, method, originalUrl, responseTime, error);
         },
@@ -94,45 +94,53 @@ export class LoggingInterceptor implements NestInterceptor {
   // Sanitasi data sensitif dari body request
   private sanitizeBody(body: any): any {
     if (!body) return {};
-    
+
     const sanitized = { ...body };
-    
+
     // List field sensitif untuk disanitasi
-    const sensitiveFields = ['password', 'passwordConfirmation', 'currentPassword', 'token', 'refreshToken', 'credit_card', 'cardNumber'];
-    
+    const sensitiveFields = [
+      'password',
+      'passwordConfirmation',
+      'currentPassword',
+      'token',
+      'refreshToken',
+      'credit_card',
+      'cardNumber',
+    ];
+
     sensitiveFields.forEach(field => {
       if (sanitized[field]) {
         sanitized[field] = '[REDACTED]';
       }
     });
-    
+
     return sanitized;
   }
 
   // Filter header yang akan di-log
   private filterHeaders(headers: any): any {
     const filtered = { ...headers };
-    
+
     // Header yang boleh di-log
     const allowedHeaders = ['user-agent', 'accept', 'content-type', 'origin', 'referer', 'x-request-id'];
-    
+
     Object.keys(filtered).forEach(key => {
       if (!allowedHeaders.includes(key.toLowerCase())) {
         delete filtered[key];
       }
     });
-    
+
     return filtered;
   }
 
   // Hitung perkiraan ukuran response
   private calculateResponseSize(data: any): number {
     if (!data) return 0;
-    
+
     if (typeof data === 'string') {
       return data.length;
     }
-    
+
     try {
       return JSON.stringify(data).length;
     } catch {
@@ -151,18 +159,18 @@ export class LoggingInterceptor implements NestInterceptor {
       try {
         const AWSXRay = require('aws-xray-sdk');
         const segment = AWSXRay.getSegment();
-        
+
         if (segment) {
           const subsegment = segment.addNewSubsegment('api-gateway');
           subsegment.addAnnotation('requestId', requestId);
           subsegment.addAnnotation('method', method);
           subsegment.addAnnotation('url', url);
           subsegment.addAnnotation('responseTime', responseTime);
-          
+
           if (error) {
             subsegment.addError(error);
           }
-          
+
           subsegment.close();
         }
       } catch (e) {

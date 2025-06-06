@@ -4,9 +4,7 @@ import * as winston from 'winston';
 import { ConfigService } from '@nestjs/config';
 import 'winston-daily-rotate-file';
 
-export const createWinstonLoggerOptions = (
-  configService: ConfigService,
-): LoggerOptions => {
+export const createWinstonLoggerOptions = (configService: ConfigService): LoggerOptions => {
   const environment = configService.get('NODE_ENV', 'development');
   const logLevel = configService.get('LOG_LEVEL', 'info');
   const isProduction = environment === 'production';

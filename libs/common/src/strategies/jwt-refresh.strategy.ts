@@ -6,10 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 
 @Injectable()
-export class JwtRefreshStrategy extends PassportStrategy(
-  Strategy,
-  'jwt-refresh'
-) {
+export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
   constructor(private configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromBodyField('refresh_token'), // Ambil dari body
@@ -21,16 +18,16 @@ export class JwtRefreshStrategy extends PassportStrategy(
 
   async validate(req: Request, payload: any) {
     const refreshToken = req.body.refresh_token;
-    
+
     // Validasi format payload
     if (!payload.isRefreshToken) {
       throw new Error('Invalid token type');
     }
-    
-    return { 
-      userId: payload.sub, 
+
+    return {
+      userId: payload.sub,
       role: payload.role,
-      refreshToken: refreshToken // Pass the actual token for verification in service
+      refreshToken: refreshToken, // Pass the actual token for verification in service
     };
   }
 }

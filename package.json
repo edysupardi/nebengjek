@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "devDependencies": {
+    "@eslint/js": "^9.28.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/platform-express": "^11.1.0",
     "@nestjs/swagger": "^11.1.6",
@@ -16,7 +17,16 @@
     "@types/opossum": "^8.1.8",
     "@types/passport-jwt": "^4.0.1",
     "@types/redis": "^4.0.10",
+    "@typescript-eslint/eslint-plugin": "^8.33.1",
+    "@typescript-eslint/parser": "^8.33.1",
+    "eslint": "^9.28.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^5.4.1",
+    "eslint-plugin-promise": "^7.2.1",
     "jest": "^29.7.0",
+    "prettier": "^3.5.3",
     "prisma": "^6.6.0",
     "ts-jest": "^29.3.2",
     "ts-loader": "^9.5.2",
@@ -63,7 +73,6 @@
   },
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start:user": "nest start user-service",
     "start:user:dev": "nest start user-service --watch",
     "start:user:debug": "nest start user-service --watch --debug",
@@ -87,7 +96,6 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -96,7 +104,11 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:dev": "dotenv -e .env.development -- ts-node prisma/seed.ts",
     "prisma:seed": "prisma db seed",
-    "postinstall": "mkdir -p logs"
+    "postinstall": "mkdir -p logs",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

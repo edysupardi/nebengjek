@@ -1,14 +1,4 @@
-import { 
-  All, 
-  Body, 
-  Controller, 
-  Param, 
-  Req, 
-  Res, 
-  Logger,
-  HttpException,
-  HttpStatus 
-} from '@nestjs/common';
+import { All, Body, Controller, Param, Req, Res, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ProxyService } from './proxy.service';
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
@@ -65,14 +55,10 @@ export class ProxyController {
   }
 
   // Generic proxy handler method
-  private async proxyRequest(
-    serviceEnvPrefix: string,
-    req: Request,
-    res: Response,
-  ) {
+  private async proxyRequest(serviceEnvPrefix: string, req: Request, res: Response) {
     const startTime = Date.now();
-    const requestId = req.headers['x-request-id'] as string || uuidv4();
-    
+    const requestId = (req.headers['x-request-id'] as string) || uuidv4();
+
     // Add request ID if not present
     if (!req.headers['x-request-id']) {
       req.headers['x-request-id'] = requestId;
@@ -81,14 +67,14 @@ export class ProxyController {
     try {
       // Get path without the service prefix (e.g., /api/users/123 -> /123 for USER_SERVICE)
       const servicePath = this.extractServicePath(serviceEnvPrefix, req.path);
-      
+
       // Get target service URL from environment variables
       const serviceHost = process.env[`${serviceEnvPrefix}_HOST`] || 'localhost';
       const servicePort = process.env[`${serviceEnvPrefix}_PORT`] || '3000';
       const serviceUrl = `http://${serviceHost}:${servicePort}`;
-      
+
       this.logger.log(`[${requestId}] Proxying ${req.method} ${req.path} -> ${serviceUrl}${servicePath}`);
-      
+
       // Forward the request to the appropriate service
       const result = await this.proxyService.forwardRequest(
         serviceUrl,
@@ -98,7 +84,7 @@ export class ProxyController {
         req.body,
         req.query,
       );
-      
+
       // Set response headers
       Object.entries(result.headers).forEach(([key, value]) => {
         // Skip certain headers that might cause issues
@@ -106,14 +92,16 @@ export class ProxyController {
           res.setHeader(key, value as string);
         }
       });
-      
+
       // Set request ID in response header
       res.setHeader('x-request-id', requestId);
-      
+
       // Log completion
       const duration = Date.now() - startTime;
-      this.logger.log(`[${requestId}] Completed ${req.method} ${req.path} -> ${serviceUrl}${servicePath} in ${duration}ms with status ${result.status}`);
-      
+      this.logger.log(
+        `[${requestId}] Completed ${req.method} ${req.path} -> ${serviceUrl}${servicePath} in ${duration}ms with status ${result.status}`,
+      );
+
       // Send response
       return res.status(result.status).send(result.data);
     } catch (error) {
@@ -123,11 +111,11 @@ export class ProxyController {
         `[${requestId}] Error proxying ${req.method} ${req.path} - ${duration}ms: ${this.getErrorMessage(error)}`,
         this.getErrorStack(error),
       );
-      
+
       // Determine appropriate error response
       const statusCode = this.getErrorStatusCode(error);
       const errorMessage = this.getErrorMessage(error);
-      
+
       // Send error response
       return res.status(statusCode).json({
         statusCode,
@@ -148,7 +136,7 @@ export class ProxyController {
       [ServiceType.NOTIFICATION_SERVICE]: '/api/notifications',
       [ServiceType.TRACKING_SERVICE]: '/api/tracking',
     };
-    
+
     // Gunakan type assertion untuk memberi tahu TypeScript bahwa key pasti valid
     const prefix = servicePrefixMap[serviceEnvPrefix as keyof typeof servicePrefixMap];
     if (prefix && fullPath.startsWith(prefix)) {
@@ -156,7 +144,7 @@ export class ProxyController {
       const remaining = fullPath.substring(prefix.length);
       return remaining || '/';
     }
-    
+
     return fullPath; // Fallback
   }
 
@@ -165,7 +153,7 @@ export class ProxyController {
     if (error instanceof HttpException) {
       return error.getStatus();
     }
-    
+
     // If it's an object with a status property, use that
     if (typeof error === 'object' && error !== null && 'status' in error) {
       const status = (error as { status: unknown }).status;
@@ -173,7 +161,7 @@ export class ProxyController {
         return status;
       }
     }
-    
+
     return HttpStatus.INTERNAL_SERVER_ERROR;
   }
 
@@ -181,18 +169,18 @@ export class ProxyController {
     if (error instanceof HttpException) {
       return error.message;
     }
-    
+
     if (error instanceof Error) {
       return error.message;
     }
-    
+
     if (typeof error === 'object' && error !== null && 'message' in error) {
       const message = (error as { message: unknown }).message;
       if (typeof message === 'string') {
         return message;
       }
     }
-    
+
     return 'An unexpected error occurred';
   }
 
@@ -200,14 +188,14 @@ export class ProxyController {
     if (error instanceof Error) {
       return error.stack;
     }
-    
+
     if (typeof error === 'object' && error !== null && 'stack' in error) {
       const stack = (error as { stack: unknown }).stack;
       if (typeof stack === 'string') {
         return stack;
       }
     }
-    
+
     return undefined;
   }
 }

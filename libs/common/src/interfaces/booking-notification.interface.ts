@@ -3,7 +3,8 @@ export interface BookingNotification {
   driverId: string;
   customerId: string; // ← ADD THIS
   distance: number;
-  pickupLocation?: {  // ← ADD THIS
+  pickupLocation?: {
+    // ← ADD THIS
     latitude: number;
     longitude: number;
   };

@@ -46,9 +46,7 @@ export class RedisModule {
     };
   }
 
-  static register(options: {
-    connectionOptions: RedisOptions;
-  }): DynamicModule {
+  static register(options: { connectionOptions: RedisOptions }): DynamicModule {
     const redisProvider: Provider = {
       provide: 'REDIS_CLIENT',
       useFactory: () => {

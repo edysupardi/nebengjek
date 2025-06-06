@@ -15,13 +15,12 @@ export class HealthService {
     const [redis, database, additionalChecks] = await Promise.all([
       this.checkRedisHealth(),
       this.checkDatabaseHealth(),
-      this.checkAdditional()
+      this.checkAdditional(),
     ]);
 
     const additionalChecksArray = Object.values(additionalChecks) as HealthCheckResult[];
-    const isHealthy = redis.status === 'up' && 
-                      database.status === 'up' && 
-                      additionalChecksArray.every(check => check.status === 'up');
+    const isHealthy =
+      redis.status === 'up' && database.status === 'up' && additionalChecksArray.every(check => check.status === 'up');
 
     return {
       service: this.options.serviceName,
@@ -30,8 +29,8 @@ export class HealthService {
       details: {
         redis,
         database,
-        ...additionalChecks
-      }
+        ...additionalChecks,
+      },
     };
   }
 
@@ -42,9 +41,9 @@ export class HealthService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Redis health check failed: ${errorMessage}`);
-      return { 
+      return {
         status: 'down',
-        error: errorMessage 
+        error: errorMessage,
       };
     }
   }
@@ -56,16 +55,16 @@ export class HealthService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Database health check failed: ${errorMessage}`);
-      return { 
+      return {
         status: 'down',
-        error: errorMessage 
+        error: errorMessage,
       };
     }
   }
 
   private async checkAdditional(): Promise<Record<string, HealthCheckResult>> {
     const result: Record<string, HealthCheckResult> = {};
-    
+
     for (const [name, checkFn] of Object.entries(this.options.additionalChecks)) {
       try {
         const isHealthy = await checkFn();
@@ -73,13 +72,13 @@ export class HealthService {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         this.logger.error(`Additional health check "${name}" failed: ${errorMessage}`);
-        result[name] = { 
+        result[name] = {
           status: 'down',
-          error: errorMessage 
+          error: errorMessage,
         };
       }
     }
-    
+
     return result;
   }
 }

@@ -11,7 +11,7 @@ export class MatchingService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject('REDIS_CLIENT') private redis: any,
-  ) { }
+  ) {}
 
   /**
    * Mencari driver terdekat untuk customer
@@ -45,10 +45,7 @@ export class MatchingService {
       }
 
       // 2. Combine all excluded drivers (customer blocked + manually excluded + booking-specific)
-      allExcludedDrivers = [
-        ...blockedDrivers,
-        ...(excludeDrivers || [])
-      ];
+      allExcludedDrivers = [...blockedDrivers, ...(excludeDrivers || [])];
 
       // Add booking-specific excluded drivers from Redis (drivers who already rejected this booking)
       if (bookingId) {
@@ -74,19 +71,19 @@ export class MatchingService {
           // Exclude all blocked/rejected drivers
           ...(allExcludedDrivers.length > 0 && {
             userId: {
-              notIn: allExcludedDrivers
-            }
-          })
+              notIn: allExcludedDrivers,
+            },
+          }),
         },
         include: {
           user: {
             select: {
               id: true,
               name: true,
-              phone: true
-            }
-          }
-        }
+              phone: true,
+            },
+          },
+        },
       });
 
       // Jika tidak ada driver online
@@ -95,7 +92,7 @@ export class MatchingService {
         return {
           success: false,
           message: 'Tidak ada driver yang tersedia saat ini',
-          data: []
+          data: [],
         };
       } else {
         this.logger.log(`Ditemukan ${onlineDrivers.length} driver online`);
@@ -104,12 +101,7 @@ export class MatchingService {
       this.logger.log(`Mencari driver dalam radius ${radius} km dari (${latitude}, ${longitude})`);
 
       // 3. Filter driver berdasarkan jarak
-      const nearbyDrivers = DistanceHelper.filterByDistance(
-        onlineDrivers,
-        latitude,
-        longitude,
-        radius
-      );
+      const nearbyDrivers = DistanceHelper.filterByDistance(onlineDrivers, latitude, longitude, radius);
 
       // 4. Apply customer-specific filtering and sorting
       let filteredDrivers = nearbyDrivers;
@@ -140,7 +132,7 @@ export class MatchingService {
           distance: Number(driver.distance.toFixed(2)),
           vehicleType: driver.vehicleType,
           plateNumber: driver.plateNumber,
-          rating: driver.rating
+          rating: driver.rating,
         };
 
         // Add customer-specific info if applicable
@@ -160,7 +152,7 @@ export class MatchingService {
       return {
         success: true,
         message: `Berhasil menemukan ${formattedDrivers.length} driver terdekat`,
-        data: formattedDrivers
+        data: formattedDrivers,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -168,7 +160,7 @@ export class MatchingService {
       return {
         success: false,
         message: 'Terjadi kesalahan saat mencari driver',
-        data: []
+        data: [],
       };
     }
   }
@@ -190,7 +182,7 @@ export class MatchingService {
         select: {
           id: true,
           // Add customer preference fields if they exist in your schema
-        }
+        },
       });
 
       // Default preferences
@@ -198,16 +190,11 @@ export class MatchingService {
         preferredVehicleTypes: ['motorcycle', 'car'], // Accept both
         minRating: 3.0,
         maxDistance: 5, // km
-        prioritizePreviousDrivers: true
+        prioritizePreviousDrivers: true,
       };
 
       // Cache preferences for 1 hour
-      await this.redis.set(
-        `customer:${customerId}:preferences`,
-        JSON.stringify(defaultPreferences),
-        'EX',
-        3600
-      );
+      await this.redis.set(`customer:${customerId}:preferences`, JSON.stringify(defaultPreferences), 'EX', 3600);
 
       return defaultPreferences;
     } catch (error) {
@@ -236,21 +223,24 @@ export class MatchingService {
           driverId: { not: null },
           // Only consider recent cancellations (last 30 days)
           createdAt: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-          }
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
         },
         select: {
-          driverId: true
-        }
+          driverId: true,
+        },
       });
 
       // Count cancellations per driver
-      const cancellationCounts = rejectedBookings.reduce((acc, booking) => {
-        if (booking.driverId) {
-          acc[booking.driverId] = (acc[booking.driverId] || 0) + 1;
-        }
-        return acc;
-      }, {} as Record<string, number>);
+      const cancellationCounts = rejectedBookings.reduce(
+        (acc, booking) => {
+          if (booking.driverId) {
+            acc[booking.driverId] = (acc[booking.driverId] || 0) + 1;
+          }
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       // Block drivers with 3+ cancellations
       const blockedDrivers = Object.entries(cancellationCounts)
@@ -283,8 +273,8 @@ export class MatchingService {
           status: 'COMPLETED',
           driverId: { not: null },
           createdAt: {
-            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-          }
+            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          },
         },
         select: {
           id: true,
@@ -293,9 +283,9 @@ export class MatchingService {
           // Add rating field if exists
         },
         orderBy: {
-          createdAt: 'desc'
+          createdAt: 'desc',
         },
-        take: 50 // Last 50 trips
+        take: 50, // Last 50 trips
       });
 
       return tripHistory;
@@ -314,8 +304,7 @@ export class MatchingService {
 
     return drivers.filter(driver => {
       // Filter by vehicle type preference
-      if (preferences.preferredVehicleTypes &&
-        !preferences.preferredVehicleTypes.includes(driver.vehicleType)) {
+      if (preferences.preferredVehicleTypes && !preferences.preferredVehicleTypes.includes(driver.vehicleType)) {
         return false;
       }
 
@@ -338,12 +327,15 @@ export class MatchingService {
    */
   private applySmarSorting(drivers: any[], customerHistory: any[]) {
     // Create driver frequency map
-    const driverFrequency = customerHistory.reduce((acc, trip) => {
-      if (trip.driverId) {
-        acc[trip.driverId] = (acc[trip.driverId] || 0) + 1;
-      }
-      return acc;
-    }, {} as Record<string, number>);
+    const driverFrequency = customerHistory.reduce(
+      (acc, trip) => {
+        if (trip.driverId) {
+          acc[trip.driverId] = (acc[trip.driverId] || 0) + 1;
+        }
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     // Sort drivers by: 1) Previous trip count (desc), 2) Rating (desc), 3) Distance (asc)
     return drivers.sort((a, b) => {
@@ -389,10 +381,10 @@ export class MatchingService {
         `customer:${customerId}:last-search`,
         JSON.stringify({
           drivers,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         }),
         'EX',
-        600 // 10 minutes cache
+        600, // 10 minutes cache
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -459,12 +451,15 @@ export class MatchingService {
     // Add current booking ID to the DTO for proper exclusion
     const enhancedDto = {
       ...findMatchDto,
-      bookingId
+      bookingId,
     };
 
     return this.findDrivers(enhancedDto);
   }
-  async checkDriverAvailability(driverId: string, customerId?: string): Promise<{
+  async checkDriverAvailability(
+    driverId: string,
+    customerId?: string,
+  ): Promise<{
     isAvailable: boolean;
     status: string;
     reason?: string;
@@ -476,15 +471,15 @@ export class MatchingService {
         select: {
           status: true,
           lastLatitude: true,
-          lastLongitude: true
-        }
+          lastLongitude: true,
+        },
       });
 
       if (!driver || !driver.status) {
         return {
           isAvailable: false,
           status: 'offline',
-          reason: 'Driver is offline'
+          reason: 'Driver is offline',
         };
       }
 
@@ -493,16 +488,16 @@ export class MatchingService {
         where: {
           driverId: driverId,
           status: {
-            in: ['ACCEPTED', 'ONGOING']
-          }
-        }
+            in: ['ACCEPTED', 'ONGOING'],
+          },
+        },
       });
 
       if (activeBooking) {
         return {
           isAvailable: false,
           status: 'busy',
-          reason: 'Driver is on an active trip'
+          reason: 'Driver is on an active trip',
         };
       }
 
@@ -513,14 +508,14 @@ export class MatchingService {
           return {
             isAvailable: false,
             status: 'blocked',
-            reason: 'Driver is blocked for this customer'
+            reason: 'Driver is blocked for this customer',
           };
         }
       }
 
       return {
         isAvailable: true,
-        status: 'available'
+        status: 'available',
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -528,7 +523,7 @@ export class MatchingService {
       return {
         isAvailable: false,
         status: 'error',
-        reason: 'Error checking availability'
+        reason: 'Error checking availability',
       };
     }
   }

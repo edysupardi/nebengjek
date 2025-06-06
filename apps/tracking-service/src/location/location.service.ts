@@ -7,7 +7,7 @@ export class LocationService {
 
   constructor(
     private readonly locationRepository: LocationRepository,
-    @Inject('REDIS_CLIENT') private readonly redis: any
+    @Inject('REDIS_CLIENT') private readonly redis: any,
   ) {}
 
   async updateLocation(userId: string, latitude: number, longitude: number) {
@@ -25,10 +25,10 @@ export class LocationService {
         JSON.stringify({
           lat: latitude,
           lng: longitude,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         }),
         'EX',
-        300 // 5 minutes expiry
+        300, // 5 minutes expiry
       );
 
       this.logger.log(`Location updated for user ${userId}: ${latitude}, ${longitude}`);
@@ -52,12 +52,7 @@ export class LocationService {
 
         if (locationData) {
           const driverLocation = JSON.parse(locationData);
-          const distance = this.calculateDistance(
-            latitude,
-            longitude,
-            driverLocation.lat,
-            driverLocation.lng
-          );
+          const distance = this.calculateDistance(latitude, longitude, driverLocation.lat, driverLocation.lng);
 
           if (distance <= radius) {
             nearbyDrivers.push({
@@ -65,7 +60,7 @@ export class LocationService {
               latitude: driverLocation.lat,
               longitude: driverLocation.lng,
               distance,
-              lastUpdate: driverLocation.timestamp
+              lastUpdate: driverLocation.timestamp,
             });
           }
         }
@@ -95,7 +90,7 @@ export class LocationService {
         return {
           lat: dbLocation.latitude,
           lng: dbLocation.longitude,
-          timestamp: dbLocation.createdAt
+          timestamp: dbLocation.createdAt,
         };
       }
 
@@ -110,7 +105,7 @@ export class LocationService {
   /**
    * Retrieves location history for a specific user within a given time range.
    * If no time range is specified, defaults to the last 24 hours.
-   * 
+   *
    * @param userId - The unique identifier of the user
    * @param startTime - Optional ISO date string for the start of the time range
    * @param endTime - Optional ISO date string for the end of the time range
@@ -138,24 +133,24 @@ export class LocationService {
 
   /**
    * Calculates the great-circle distance between two points on Earth using the Haversine formula.
-   * 
+   *
    * @param lat1 - The latitude of the first point in decimal degrees
    * @param lon1 - The longitude of the first point in decimal degrees
    * @param lat2 - The latitude of the second point in decimal degrees
    * @param lon2 - The longitude of the second point in decimal degrees
-   * 
+   *
    * @returns The distance between the two points in kilometers
-   * 
+   *
    * @remarks
    * This function uses the Haversine formula to calculate the shortest distance between two points
    * on a sphere (Earth). The calculation assumes Earth is perfectly spherical with a radius of 6371 km.
    * The actual distance may vary slightly due to Earth's ellipsoidal shape.
-   * 
+   *
    * The Haversine formula:
    * a = sin²(Δφ/2) + cos φ1 ⋅ cos φ2 ⋅ sin²(Δλ/2)
    * c = 2 ⋅ atan2( √a, √(1−a) )
    * d = R ⋅ c
-   * 
+   *
    * where φ is latitude, λ is longitude, and R is Earth's radius
    */
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -164,8 +159,7 @@ export class LocationService {
     const dLon = this.toRad(lon2 - lon1);
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
@@ -174,7 +168,7 @@ export class LocationService {
    * Converts degrees to radians.
    * This function is commonly used in geographical calculations where degrees need to be converted
    * to radians for trigonometric operations.
-   * 
+   *
    * @param deg - The angle in degrees to convert
    * @returns The angle in radians
    */
