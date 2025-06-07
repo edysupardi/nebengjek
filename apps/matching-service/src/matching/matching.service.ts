@@ -1,15 +1,19 @@
-import { PrismaService } from '@app/database/prisma/prisma.service';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { BookingStatus } from '@prisma/client';
-import { DistanceHelper } from './distance.helper';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
+import { DistanceHelper } from '../helpers/distance.helper';
 import { FindMatchDto } from './dto/find-match.dto';
 import { DriverMatchDto, MatchResponseDto } from './dto/match-response.dto';
 
 @Injectable()
 export class MatchingService {
   private readonly logger = new Logger(MatchingService.name);
+
+  /* eslint-disable no-unused-vars */
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject('USER_SERVICE') private userServiceClient: ClientProxy,
+    @Inject('TRACKING_SERVICE') private trackingServiceClient: ClientProxy,
+    @Inject('BOOKING_SERVICE') private bookingServiceClient: ClientProxy,
     @Inject('REDIS_CLIENT') private redis: any,
   ) {}
 
@@ -20,8 +24,6 @@ export class MatchingService {
    */
   async findDrivers(findMatchDto: FindMatchDto): Promise<MatchResponseDto> {
     const { customerId, latitude, longitude, radius, excludeDrivers, preferredDrivers, bookingId } = findMatchDto;
-
-    await this.logActiveBookingStats();
 
     try {
       // 1. Get customer preferences and blocked drivers (if customerId provided)
@@ -63,41 +65,37 @@ export class MatchingService {
         this.logger.log(`Total excluded drivers: ${allExcludedDrivers.length}`);
       }
 
-      // 2. Get online drivers from database
-      const onlineDrivers = await this.prisma.driverProfile.findMany({
-        where: {
-          status: true, // hanya driver yang online
-          vehicleType: 'MOTORCYCLE', // hanya motor
-          lastLatitude: { not: null },
-          lastLongitude: { not: null },
-          // Exclude all blocked/rejected drivers
-          ...(allExcludedDrivers.length > 0 && {
-            userId: {
-              notIn: allExcludedDrivers,
-            },
+      let onlineDrivers = [];
+      try {
+        // 2. Get online drivers from user-service
+        const onlineDriversResponse = await firstValueFrom(
+          this.userServiceClient.send('getOnlineDrivers', {
+            vehicleType: 'MOTORCYCLE',
+            excludedIds: allExcludedDrivers,
+            latitude,
+            longitude,
           }),
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-            },
-          },
-        },
-      });
+        );
 
-      // Jika tidak ada driver online
-      if (onlineDrivers.length === 0) {
-        this.logger.warn('Tidak ada driver yang tersedia saat ini');
-        return {
-          success: false,
-          message: 'Tidak ada driver yang tersedia saat ini',
-          data: [],
-        };
-      } else {
-        this.logger.log(`Ditemukan ${onlineDrivers.length} driver online`);
+        if (!onlineDriversResponse.success) {
+          this.logger.error(`Failed to get online drivers: ${onlineDriversResponse.message}`);
+        } else {
+          onlineDrivers = onlineDriversResponse.data;
+          this.logger.log(`Found ${onlineDrivers.length} online drivers`);
+        }
+
+        // Jika tidak ada driver online
+        if (onlineDrivers.length === 0) {
+          this.logger.warn('Tidak ada driver yang tersedia saat ini');
+          return {
+            success: false,
+            message: 'Tidak ada driver yang tersedia saat ini',
+            data: [],
+          };
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Failed to find online drivers: ${String(error)}`, errorMessage);
       }
 
       const availableDrivers = await this.filterDriversByActiveBooking(onlineDrivers);
@@ -193,15 +191,6 @@ export class MatchingService {
         return JSON.parse(cachedPrefs);
       }
 
-      // Get from database or use defaults
-      const customer = await this.prisma.user.findUnique({
-        where: { id: customerId },
-        select: {
-          id: true,
-          // Add customer preference fields if they exist in your schema
-        },
-      });
-
       // Default preferences
       const defaultPreferences = {
         preferredVehicleTypes: ['motorcycle', 'car'], // Accept both
@@ -226,31 +215,40 @@ export class MatchingService {
    */
   private async getBlockedDrivers(customerId: string): Promise<string[]> {
     try {
-      // Get from Redis cache first
+      // Check Redis cache first
       const cachedBlocked = await this.redis.smembers(`customer:${customerId}:blocked-drivers`);
       if (cachedBlocked && cachedBlocked.length > 0) {
+        this.logger.log(`Found ${cachedBlocked.length} cached blocked drivers for customer ${customerId}`);
         return cachedBlocked;
       }
 
-      // Get from database - drivers who were consistently rejected/cancelled by this customer
-      const rejectedBookings = await this.prisma.booking.findMany({
-        where: {
-          customerId: customerId,
-          status: 'CANCELLED',
-          driverId: { not: null },
-          // Only consider recent cancellations (last 30 days)
-          createdAt: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          },
-        },
-        select: {
-          driverId: true,
-        },
-      });
+      let cancelledResponse = null;
+      try {
+        cancelledResponse = await firstValueFrom(
+          this.bookingServiceClient.send('getCustomerCancelledBookings', {
+            customerId,
+            daysBack: 30,
+          }),
+        );
 
-      // Count cancellations per driver
+        if (!cancelledResponse.success) {
+          this.logger.warn(`Failed to get cancelled bookings for customer ${customerId}: ${cancelledResponse.message}`);
+          return [];
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Failed to check cancel driver at booking-service: ${String(error)}`, errorMessage);
+      }
+
+      const rejectedBookings = cancelledResponse.data;
+
+      if (!rejectedBookings || rejectedBookings.length === 0) {
+        this.logger.log(`No cancelled bookings found for customer ${customerId}`);
+        return [];
+      }
+
       const cancellationCounts = rejectedBookings.reduce(
-        (acc, booking) => {
+        (acc: Record<string, number>, booking: any) => {
           if (booking.driverId) {
             acc[booking.driverId] = (acc[booking.driverId] || 0) + 1;
           }
@@ -259,21 +257,30 @@ export class MatchingService {
         {} as Record<string, number>,
       );
 
-      // Block drivers with 3+ cancellations
-      const blockedDrivers = Object.entries(cancellationCounts)
-        .filter(([_, count]) => count >= 3)
-        .map(([driverId, _]) => driverId);
+      const blockedDrivers = (Object.entries(cancellationCounts) as Array<[string, number]>)
+        .filter(([, count]) => count >= 3)
+        .map(([driverId]) => driverId);
 
-      // Cache for 1 hour
+      this.logger.log(
+        `Processed ${rejectedBookings.length} cancelled bookings for customer ${customerId}. ` +
+          `Found ${blockedDrivers.length} drivers to block: ${blockedDrivers.join(', ')}`,
+      );
+
       if (blockedDrivers.length > 0) {
-        await this.redis.sadd(`customer:${customerId}:blocked-drivers`, ...blockedDrivers);
-        await this.redis.expire(`customer:${customerId}:blocked-drivers`, 3600);
+        try {
+          await this.redis.sadd(`customer:${customerId}:blocked-drivers`, ...blockedDrivers);
+          await this.redis.expire(`customer:${customerId}:blocked-drivers`, 3600); // 1 hour instead of 24h
+          this.logger.log(`Cached ${blockedDrivers.length} blocked drivers for customer ${customerId}`);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          this.logger.error(`Error caching blocked drivers for customer ${customerId}: ${errorMessage}`);
+        }
       }
 
       return blockedDrivers;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error getting blocked drivers: ${errorMessage}`);
+      this.logger.error(`Error getting blocked drivers for customer ${customerId}: ${errorMessage}`);
       return [];
     }
   }
@@ -284,28 +291,16 @@ export class MatchingService {
   private async getCustomerTripHistory(customerId: string) {
     try {
       // Get completed trips from last 90 days
-      const tripHistory = await this.prisma.booking.findMany({
-        where: {
-          customerId: customerId,
-          status: 'COMPLETED',
-          driverId: { not: null },
-          createdAt: {
-            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-          },
-        },
-        select: {
-          id: true,
-          driverId: true,
-          createdAt: true,
-          // Add rating field if exists
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: 50, // Last 50 trips
-      });
+      const tripHistory = await firstValueFrom(
+        this.bookingServiceClient.send('getCustomerBookingHistory', { customerId, daysBack: 90, limit: 50 }),
+      );
 
-      return tripHistory;
+      if (!tripHistory.success) {
+        this.logger.warn(`Failed to get trip history for customer ${customerId}: ${tripHistory.message}`);
+        return [];
+      }
+
+      return tripHistory.data;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error getting customer trip history: ${errorMessage}`);
@@ -483,19 +478,25 @@ export class MatchingService {
     reason?: string;
   }> {
     try {
-      const isAvailableWithLogging = await this.validateDriverAvailabilityWithLogging(
-        driverId,
-        `availability check${customerId ? ` for customer ${customerId}` : ''}`,
-      );
       // Check basic availability
-      const driver = await this.prisma.driverProfile.findUnique({
-        where: { userId: driverId },
-        select: {
-          status: true,
-          lastLatitude: true,
-          lastLongitude: true,
-        },
-      });
+      let driver = null;
+      try {
+        const driverResponse = await firstValueFrom(
+          this.userServiceClient.send('checkDriverAvailability', { driverId }),
+        );
+        if (!driverResponse.success) {
+          this.logger.error(`Failed to check driver availability: ${driverResponse.message}`);
+          return {
+            isAvailable: false,
+            status: 'error',
+            reason: 'Failed to check availability',
+          };
+        }
+        driver = driverResponse.data;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Failed to check driver availability: ${String(error)}`, errorMessage);
+      }
 
       if (!driver || !driver.status) {
         return {
@@ -546,27 +547,23 @@ export class MatchingService {
    */
   private async hasActiveBooking(driverId: string): Promise<boolean> {
     try {
-      const activeBooking = await this.prisma.booking.findFirst({
-        where: {
+      const response = await firstValueFrom(
+        this.bookingServiceClient.send('checkDriverActiveBooking', {
           driverId: driverId,
-          status: {
-            in: ['PENDING', 'ACCEPTED', 'ONGOING'],
-          },
-        },
-        select: {
-          id: true,
-          status: true,
-        },
-      });
+        }),
+      );
 
-      if (activeBooking) {
-        this.logger.log(
-          `Driver ${driverId} has active booking ${activeBooking.id} with status ${activeBooking.status}`,
-        );
-        return true;
+      if (response.success) {
+        const hasActive = response.data.hasActiveBooking;
+        if (hasActive) {
+          this.logger.log(`Driver ${driverId} has active booking`);
+        }
+        return hasActive;
       }
 
-      return false;
+      // Fallback: assume busy if service call fails
+      this.logger.warn(`Failed to check active booking for driver ${driverId}, assuming busy`);
+      return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error checking active booking for driver ${driverId}: ${errorMessage}`);
@@ -581,29 +578,28 @@ export class MatchingService {
     try {
       if (driverIds.length === 0) return [];
 
-      const activeBookings = await this.prisma.booking.findMany({
-        where: {
-          driverId: {
-            in: driverIds,
-          },
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.ACCEPTED, BookingStatus.ONGOING],
-          },
-        },
-        select: {
-          driverId: true,
-          status: true,
-          id: true,
-        },
-      });
+      const response = await firstValueFrom(
+        this.bookingServiceClient.send('checkDriversAvailability', {
+          driverIds: driverIds,
+        }),
+      );
 
-      const busyDrivers = activeBookings.map(booking => booking.driverId).filter(Boolean) as string[];
+      if (response.success) {
+        // Extract busy drivers from availability response
+        const busyDrivers = response.data
+          .filter((driver: any) => !driver.isAvailable)
+          .map((driver: any) => driver.driverId);
 
-      if (busyDrivers.length > 0) {
-        this.logger.log(`Found ${busyDrivers.length} drivers with active bookings: ${busyDrivers.join(', ')}`);
+        if (busyDrivers.length > 0) {
+          this.logger.log(`Found ${busyDrivers.length} drivers with active bookings: ${busyDrivers.join(', ')}`);
+        }
+
+        return busyDrivers;
       }
 
-      return busyDrivers;
+      // Fallback: assume all busy if service call fails
+      this.logger.warn('Failed to check drivers availability, assuming all are busy');
+      return driverIds; // Fail safe - exclude all if we can't check
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error getting drivers with active bookings: ${errorMessage}`);
@@ -637,186 +633,4 @@ export class MatchingService {
       return []; // Fail safe - return empty if we can't filter properly
     }
   }
-
-  /**
-   * Log active booking statistics for monitoring
-   */
-  private async logActiveBookingStats(): Promise<void> {
-    try {
-      const stats = await this.prisma.booking.groupBy({
-        by: ['status'],
-        where: {
-          status: {
-            in: ['PENDING', 'ACCEPTED', 'ONGOING'],
-          },
-          driverId: {
-            not: null,
-          },
-        },
-        _count: {
-          status: true,
-        },
-      });
-
-      const statsMessage = stats.map(stat => `${stat.status}: ${stat._count.status}`).join(', ');
-      this.logger.log(`Active booking stats - ${statsMessage}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error logging active booking stats: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Get detailed active booking info for specific driver (for debugging)
-   */
-  private async getDriverActiveBookingDetails(driverId: string): Promise<any> {
-    try {
-      const activeBooking = await this.prisma.booking.findFirst({
-        where: {
-          driverId: driverId,
-          status: {
-            in: ['PENDING', 'ACCEPTED', 'ONGOING'],
-          },
-        },
-        select: {
-          id: true,
-          status: true,
-          createdAt: true,
-          acceptedAt: true,
-          startedAt: true,
-          customerId: true,
-        },
-      });
-
-      return activeBooking;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error getting driver active booking details: ${errorMessage}`);
-      return null;
-    }
-  }
-
-  /**
-   * Validate driver availability with detailed logging
-   */
-  private async validateDriverAvailabilityWithLogging(driverId: string, context: string): Promise<boolean> {
-    try {
-      const isAvailable = !(await this.hasActiveBooking(driverId));
-
-      if (!isAvailable) {
-        const activeBookingDetails = await this.getDriverActiveBookingDetails(driverId);
-        this.logger.warn(
-          `Driver ${driverId} rejected for ${context} - Active booking: ${JSON.stringify(activeBookingDetails)}`,
-        );
-      }
-
-      return isAvailable;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error validating driver availability: ${errorMessage}`);
-      return false;
-    }
-  }
-
-  /**
-   * Clean up orphaned bookings (for maintenance)
-   * Bookings that are stuck in PENDING/ACCEPTED status for too long
-   */
-  async cleanupOrphanedBookings(): Promise<void> {
-    try {
-      const cutoffTime = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours ago
-
-      const orphanedBookings = await this.prisma.booking.findMany({
-        where: {
-          status: {
-            in: ['PENDING', 'ACCEPTED'],
-          },
-          createdAt: {
-            lt: cutoffTime,
-          },
-        },
-        select: {
-          id: true,
-          driverId: true,
-          status: true,
-          createdAt: true,
-        },
-      });
-
-      if (orphanedBookings.length > 0) {
-        this.logger.warn(`Found ${orphanedBookings.length} orphaned bookings older than 2 hours`);
-
-        // This would typically be handled by a separate cleanup job
-        // For now, just log them for manual review
-        orphanedBookings.forEach(booking => {
-          this.logger.warn(`Orphaned booking: ${booking.id} (${booking.status}) - Driver: ${booking.driverId}`);
-        });
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error during orphaned bookings cleanup: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Get active booking summary for debugging
-   */
-  async getActiveBookingSummary(): Promise<{
-    totalActive: number;
-    byStatus: Record<string, number>;
-    byDriver: Record<string, number>;
-  }> {
-    try {
-      const activeBookings = await this.prisma.booking.findMany({
-        where: {
-          status: {
-            in: ['PENDING', 'ACCEPTED', 'ONGOING'],
-          },
-        },
-        select: {
-          status: true,
-          driverId: true,
-        },
-      });
-
-      const byStatus = activeBookings.reduce(
-        (acc, booking) => {
-          acc[booking.status] = (acc[booking.status] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
-
-      const byDriver = activeBookings
-        .filter(booking => booking.driverId)
-        .reduce(
-          (acc, booking) => {
-            acc[booking.driverId!] = (acc[booking.driverId!] || 0) + 1;
-            return acc;
-          },
-          {} as Record<string, number>,
-        );
-
-      return {
-        totalActive: activeBookings.length,
-        byStatus,
-        byDriver,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error getting active booking summary: ${errorMessage}`);
-      return {
-        totalActive: 0,
-        byStatus: {},
-        byDriver: {},
-      };
-    }
-  }
-
-  /**
-   * Constants for active booking definitions
-   */
-  private readonly ACTIVE_BOOKING_STATUSES = ['PENDING', 'ACCEPTED', 'ONGOING'] as const;
-  private readonly BOOKING_TIMEOUT_HOURS = 2;
-  private readonly MATCHING_CACHE_TTL = 600; // 10 minutes
 }

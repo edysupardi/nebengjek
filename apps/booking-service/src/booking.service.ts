@@ -545,4 +545,167 @@ export class BookingService {
       return [];
     }
   }
+
+  // ADD to existing booking.service.ts
+
+  /**
+   * Check availability for multiple drivers
+   */
+  async checkMultipleDriversAvailability(driverIds: string[]) {
+    try {
+      if (driverIds.length === 0) return [];
+
+      const activeBookings = await this.bookingRepository.findMany({
+        where: {
+          driverId: { in: driverIds },
+          status: { in: [BookingStatus.PENDING, BookingStatus.ACCEPTED, BookingStatus.ONGOING] },
+        },
+      });
+
+      // Create availability map
+      const busyDrivers = new Set(activeBookings.map(booking => booking.driverId).filter(Boolean));
+
+      return driverIds.map(driverId => ({
+        driverId,
+        isAvailable: !busyDrivers.has(driverId),
+        activeBooking: activeBookings.find(booking => booking.driverId === driverId) || null,
+      }));
+    } catch (error) {
+      this.logger.error('Error checking multiple drivers availability:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get customer booking history for matching preferences
+   */
+  async getCustomerBookingHistory(customerId: string, daysBack: number, limit: number = 50) {
+    try {
+      const cutoffDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+
+      const bookings = await this.bookingRepository.findMany({
+        where: {
+          customerId: customerId,
+          status: BookingStatus.COMPLETED,
+          driverId: { not: null },
+          createdAt: { gte: cutoffDate },
+        },
+        include: {
+          id: true,
+          driverId: true,
+          createdAt: true,
+          driver: {
+            select: {
+              name: true,
+              driverProfile: {
+                select: {
+                  rating: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      });
+
+      return bookings;
+    } catch (error) {
+      this.logger.error('Error getting customer booking history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get customer cancelled bookings for blocked driver calculation
+   */
+  async getCustomerCancelledBookings(customerId: string, daysBack: number) {
+    try {
+      const cutoffDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+
+      const cancelledBookings = await this.bookingRepository.findMany({
+        where: {
+          customerId: customerId,
+          status: BookingStatus.CANCELLED,
+          driverId: { not: null },
+          createdAt: { gte: cutoffDate },
+        },
+        include: {
+          driverId: true,
+          createdAt: true,
+        },
+      });
+
+      return cancelledBookings;
+    } catch (error) {
+      this.logger.error('Error getting customer cancelled bookings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get active booking statistics for monitoring
+   */
+  async getActiveBookingStatistics() {
+    try {
+      const stats = await this.bookingRepository.groupBy({
+        by: ['status'],
+        where: {
+          status: { in: [BookingStatus.PENDING, BookingStatus.ACCEPTED, BookingStatus.ONGOING] },
+          driverId: { not: null },
+        },
+        _count: { status: true },
+      });
+
+      const result = stats.reduce(
+        (acc, stat) => {
+          if (typeof stat._count === 'object' && 'status' in stat._count) {
+            acc[stat.status] = stat._count.status;
+          }
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
+
+      const totalActive = Object.values(result).reduce((sum, count) => sum + count, 0);
+
+      return {
+        totalActive,
+        byStatus: result,
+      };
+    } catch (error) {
+      this.logger.error('Error getting active booking statistics:', error);
+      throw error;
+    }
+  }
+
+  async hasActiveBooking(driverId: string): Promise<boolean> {
+    try {
+      const activeBooking = await this.bookingRepository.findFirst({
+        where: {
+          driverId: driverId,
+          status: {
+            in: [BookingStatus.PENDING, BookingStatus.ACCEPTED, BookingStatus.ONGOING],
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (activeBooking) {
+        this.logger.log(
+          `Driver ${driverId} has active booking ${activeBooking.id} with status ${activeBooking.status}`,
+        );
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error checking active booking for driver ${driverId}: ${errorMessage}`);
+      return true; // Fail safe - assume driver is busy if we can't check
+    }
+  }
 }

@@ -1,13 +1,14 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { UserRepository } from '@app/user/repositories/user.repository';
-import { DriverProfileRepository } from '@app/driver/repositories/driver-profile.repository';
 import { RegisterDriverDto } from '@app/driver/dto/register-driver.dto';
 import { UpdateLocationDto } from '@app/driver/dto/update-location.dto';
+import { DriverProfileRepository } from '@app/driver/repositories/driver-profile.repository';
+import { UserRepository } from '@app/user/repositories/user.repository';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class DriverService {
   private readonly logger = new Logger(DriverService.name);
+  /* eslint-disable no-unused-vars */
   constructor(
     private readonly userRepository: UserRepository,
     private readonly driverProfileRepository: DriverProfileRepository,
@@ -51,14 +52,6 @@ export class DriverService {
     return driverProfile;
   }
 
-  /**
-   * Updates the driver's active status and manages their real-time tracking state in Redis
-   *
-   * @param userId - The unique identifier of the user/driver
-   * @param status - Boolean indicating whether the driver is active (true) or inactive (false)
-   * @returns Promise containing the updated driver profile
-   * @throws {NotFoundException} When the driver profile cannot be found for the given user ID
-   */
   async updateStatus(userId: string, status: boolean) {
     const driverProfile = await this.driverProfileRepository.findByUserId(userId);
     if (!driverProfile) {
@@ -109,5 +102,123 @@ export class DriverService {
     this.logger.log(`Driver location updated in Redis for user ID: ${userId}`);
 
     return { message: 'Location updated successfully' };
+  }
+
+  /**
+   * Find online drivers for matching service
+   */
+  async findOnlineDriversForMatching(
+    vehicleType: string,
+    excludedIds: string[],
+    latitude?: number,
+    longitude?: number,
+  ) {
+    try {
+      // Use existing driverProfileRepository (check your actual repository name)
+      const drivers = await this.driverProfileRepository.findMany({
+        where: {
+          status: true, // hanya driver yang online
+          vehicleType: vehicleType,
+          lastLatitude: { not: null },
+          lastLongitude: { not: null },
+          // Exclude blocked/rejected drivers
+          ...(excludedIds.length > 0 && {
+            userId: { notIn: excludedIds },
+          }),
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+        },
+      });
+
+      // If location provided, calculate distances
+      if (latitude && longitude) {
+        return drivers.map(driver => ({
+          ...driver,
+          distance: this.calculateDistance(latitude, longitude, driver.lastLatitude!, driver.lastLongitude!),
+        }));
+      }
+
+      return drivers;
+    } catch (error) {
+      this.logger.error('Error finding online drivers for matching:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check single driver availability
+   */
+  async checkSingleDriverAvailability(driverId: string) {
+    try {
+      // Use existing method or repository (adjust to your actual method name)
+      const driver = await this.driverProfileRepository.findByUserId(driverId);
+
+      if (!driver) {
+        return {
+          isAvailable: false,
+          status: 'not_found',
+          reason: 'Driver not found',
+        };
+      }
+
+      if (!driver.status) {
+        return {
+          isAvailable: false,
+          status: 'offline',
+          reason: 'Driver is offline',
+        };
+      }
+
+      return {
+        isAvailable: true,
+        status: 'online',
+        lastLocation: {
+          latitude: driver.lastLatitude,
+          longitude: driver.lastLongitude,
+        },
+        rating: driver.rating,
+        vehicleType: driver.vehicleType,
+      };
+    } catch (error) {
+      this.logger.error('Error checking driver availability:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get driver profile for matching
+   */
+  async getDriverProfileForMatching(driverId: string) {
+    try {
+      return await this.driverProfileRepository.findByUserId(driverId);
+    } catch (error) {
+      this.logger.error('Error getting driver profile for matching:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate distance between two points (Haversine formula)
+   */
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = this.toRadians(lat2 - lat1);
+    const dLon = this.toRadians(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  private toRadians(degrees: number): number {
+    return degrees * (Math.PI / 180);
   }
 }

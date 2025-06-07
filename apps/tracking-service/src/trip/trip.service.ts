@@ -1,23 +1,23 @@
-import {
-  Injectable,
-  Inject,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { TripRepository } from '@app/trip/repositories/trip.repository';
-import { LocationService } from '@app/location/location.service';
-import { StartTripDto } from '@app/trip/dto/start-trip.dto';
-import { EndTripDto } from '@app/trip/dto/end-trip.dto';
-import { UpdateTripLocationDto } from '@app/trip/dto/update-trip-location.dto';
-import { TripGateway } from '@app/trip/trip.gateway';
-import { EventPattern, MessagePattern, ClientProxy } from '@nestjs/microservices';
 import { TripStatus } from '@app/common';
 import * as PriceConstant from '@app/common/constants/price.constant';
+import { LocationService } from '@app/location/location.service';
 import { MessagingService } from '@app/messaging';
 import { TripEvents } from '@app/messaging/events/event-types';
-import { catchError, firstValueFrom, retry, throwError, timeout } from 'rxjs';
+import { EndTripDto } from '@app/trip/dto/end-trip.dto';
+import { StartTripDto } from '@app/trip/dto/start-trip.dto';
+import { UpdateTripLocationDto } from '@app/trip/dto/update-trip-location.dto';
+import { TripRepository } from '@app/trip/repositories/trip.repository';
+import { TripGateway } from '@app/trip/trip.gateway';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom, timeout } from 'rxjs';
 
 @Injectable()
 export class TripService {
@@ -25,6 +25,7 @@ export class TripService {
   private readonly PRICE_PER_KM = PriceConstant.PRICE_CONSTANTS.PRICE_PER_KM;
   private readonly PLATFORM_FEE_PERCENTAGE = PriceConstant.PRICE_CONSTANTS.PLATFORM_FEE_PERCENTAGE / 100; // 5%
 
+  /* eslint-disable no-unused-vars */
   constructor(
     private readonly tripRepository: TripRepository,
     private readonly locationService: LocationService,
@@ -195,14 +196,6 @@ export class TripService {
 
             // Log billing milestone
             this.logger.log(`Trip ${tripId}: Billing milestone - ${trip.billableKm}km completed, Cost: Rp${newCost}`);
-
-            // Optional: Send billing notification to customer
-            // this.tripGateway.sendBillingUpdate(tripId, {
-            //   message: `${completedKm}km completed`,
-            //   billableDistance: trip.billableKm,
-            //   currentCost: newCost,
-            //   timestamp: new Date().toISOString()
-            // });
           }
         }
       }
@@ -587,108 +580,73 @@ export class TripService {
     }
   }
 
-  // Message handler for booking service (legacy compatibility)
-  @MessagePattern('trip.calculateFinalCost')
-  async calculateFinalCostMessage(data: { bookingId: string }) {
+  /**
+   * Get driver trip statistics for matching scoring
+   */
+  async getDriverTripStatistics(driverId: string, daysBack: number = 30) {
     try {
-      // Find trip by booking ID
-      const trip = await this.tripRepository.findByBookingId(data.bookingId);
-      if (!trip) {
-        throw new NotFoundException('No trip found for this booking');
-      }
+      const cutoffDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
 
-      // Use existing cost calculation method
-      const costCalculation = await this.calculateTripCost(trip.id);
+      // Use existing tripRepository
+      const tripStats = await this.tripRepository.aggregate({
+        where: {
+          booking: { driverId: driverId },
+          startTime: { gte: cutoffDate },
+          status: 'COMPLETED',
+        },
+        _count: true,
+        _avg: {
+          distance: true,
+          finalPrice: true,
+        },
+        _sum: {
+          distance: true,
+          driverAmount: true,
+        },
+      });
 
       return {
-        bookingId: data.bookingId,
-        totalDistance: costCalculation.distance,
-        basePrice: costCalculation.basePrice,
-        platformFeePercentage: this.PLATFORM_FEE_PERCENTAGE * 100,
-        platformFeeAmount: costCalculation.platformFeeAmount,
-        driverAmount: costCalculation.driverAmount,
-        finalPrice: costCalculation.finalPrice || costCalculation.estimatedFinalPrice,
+        totalTrips: tripStats._count ?? 0,
+        averageDistance: tripStats._avg?.distance ?? 0,
+        averageEarnings: tripStats._avg?.finalPrice ?? 0,
+        totalDistance: tripStats._sum?.distance ?? 0,
+        totalEarnings: tripStats._sum?.driverAmount ?? 0,
+        period: `${daysBack} days`,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to calculate final cost for booking ${data.bookingId}: ${errorMessage}`, error);
+      this.logger.error('Error getting driver trip statistics:', error);
       throw error;
     }
   }
 
-  @MessagePattern('trip.getDistance')
-  async getTripDistanceMessage(data: { bookingId: string }) {
+  /**
+   * Get driver active trip
+   */
+  async getDriverActiveTrip(driverId: string) {
     try {
-      // First try to find trip in Redis by searching for booking ID
-      const redisKeys = await this.redis.keys('trip:*');
-      for (const key of redisKeys) {
-        const tripData = await this.redis.get(key);
-        if (tripData) {
-          const trip = JSON.parse(tripData);
-          if (trip.bookingId === data.bookingId) {
-            return {
-              bookingId: data.bookingId,
-              totalDistanceKm: trip.totalDistance,
-              locations: trip.locations.length,
-            };
-          }
-        }
-      }
+      const activeTrip = await this.tripRepository.findFirst({
+        where: {
+          booking: { driverId: driverId },
+          status: 'ONGOING',
+        },
+        include: {
+          booking: {
+            select: {
+              id: true,
+              status: true,
+              pickupLat: true,
+              pickupLng: true,
+              destinationLat: true,
+              destinationLng: true,
+            },
+          },
+        },
+      });
 
-      // If not found in Redis, get from database
-      const trip = await this.tripRepository.findByBookingId(data.bookingId);
-      if (!trip) {
-        throw new NotFoundException('Trip not found');
-      }
-
-      return {
-        bookingId: data.bookingId,
-        totalDistanceKm: trip.distance,
-        locations: 0, // Completed trips don't have location tracking data
-      };
+      return activeTrip;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to get trip distance for booking ${data.bookingId}: ${errorMessage}`, error);
+      this.logger.error('Error getting driver active trip:', error);
       throw error;
-    }
-  }
-
-  // Event handler for trip completion (legacy compatibility)
-  @EventPattern('trip.complete')
-  async handleTripCompleteEvent(data: { bookingId: string; tripDetails: any }) {
-    try {
-      const tripId = await this.findTripIdByBookingId(data.bookingId);
-      if (!tripId) {
-        this.logger.error(`No trip found for booking ${data.bookingId}`);
-        return;
-      }
-
-      // Update trip in database with final data
-      await this.tripRepository.update(tripId, {
-        endTime: new Date(),
-        status: TripStatus.COMPLETED,
-        distance: data.tripDetails.totalDistance,
-        basePrice: data.tripDetails.basePrice,
-        finalPrice: data.tripDetails.finalPrice,
-        platformFeePercentage: data.tripDetails.platformFeePercentage,
-        platformFeeAmount: data.tripDetails.platformFeeAmount,
-        driverAmount: data.tripDetails.driverAmount,
-      });
-
-      // Clean up Redis
-      await this.redis.del(`trip:${tripId}`);
-
-      // Broadcast to WebSocket
-      this.tripGateway.sendTripStatusUpdate(tripId, {
-        status: 'COMPLETED',
-        finalPrice: data.tripDetails.finalPrice,
-        totalDistance: data.tripDetails.totalDistance,
-      });
-
-      this.logger.log(`Trip completed for booking ${data.bookingId}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to handle trip complete for booking ${data.bookingId}: ${errorMessage}`, error);
     }
   }
 

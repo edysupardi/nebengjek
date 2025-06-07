@@ -1,13 +1,13 @@
 // src/events/events.controller.ts
+import { MessagingService } from '@app/messaging';
+import { BookingEvents, PaymentEvents, TripEvents } from '@app/messaging/events/event-types';
 import { Controller, Logger } from '@nestjs/common';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
-import { NotificationService } from '../notification.service';
 import { BookingNotificationDto } from '../dto/booking-notification.dto';
-import { TripNotificationDto } from '../dto/trip-notification.dto';
 import { CustomerNotificationDto } from '../dto/customer-notification.dto';
 import { DriverNotificationDto } from '../dto/driver-notification.dto';
-import { MessagingService } from '@app/messaging';
-import { BookingEvents, TripEvents, PaymentEvents } from '@app/messaging/events/event-types';
+import { TripNotificationDto } from '../dto/trip-notification.dto';
+import { NotificationService } from '../notification.service';
 
 @Controller('events')
 export class EventsController {

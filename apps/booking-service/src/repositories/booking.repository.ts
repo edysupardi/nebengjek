@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@app/database';
-import { Booking, User, DriverProfile } from '@prisma/client';
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
+import { PrismaService } from '@app/database';
+import { Injectable } from '@nestjs/common';
+import { Booking, DriverProfile, Prisma, User } from '@prisma/client';
 
 type BookingWithRelations = Booking & {
   customer: User | null;
@@ -14,6 +14,7 @@ type BookingWithRelations = Booking & {
 
 @Injectable()
 export class BookingRepository {
+  // eslint-disable-next-line no-unused-vars
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: Partial<Booking>): Promise<BookingWithRelations> {
@@ -123,6 +124,25 @@ export class BookingRepository {
         customer: true,
         driver: true,
       },
+    });
+  }
+
+  async findMany(params: { where: any; include?: any; orderBy?: any; take?: number; skip?: number }) {
+    return this.prisma.booking.findMany(params);
+  }
+
+  async groupBy({ by, where, _count }: { by: Prisma.BookingScalarFieldEnum[]; where: any; _count: any }) {
+    return await this.prisma.booking.groupBy({
+      by,
+      where,
+      _count,
+    });
+  }
+
+  async findFirst(query: { where: any; select?: any }) {
+    return this.prisma.booking.findFirst({
+      where: query.where,
+      select: query.select,
     });
   }
 }
