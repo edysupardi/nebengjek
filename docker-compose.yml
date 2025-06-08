@@ -44,14 +44,16 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - BOOKING_PORT=${BOOKING_PORT:-3002}
       - BOOKING_TCP_PORT=${BOOKING_TCP_PORT:-8005}
-      - TRACKING_PORT=${TRACKING_PORT:-3003}
       - NOTIFICATION_SERVICE_HOST=${NOTIFICATION_SERVICE_HOST:-notification-service}
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
+      - TRACKING_SERVICE_HOST=${TRACKING_SERVICE_HOST:-tracking-service}
+      - TRACKING_PORT=${TRACKING_PORT:-3003}
       # TCP client connections
       - MATCHING_TCP_PORT=${MATCHING_TCP_PORT:-8006}
-      - NOTIFICATION_TCP_PORT=${MATCHING_TCP_PORT:-8004}
+      - NOTIFICATION_TCP_PORT=${NOTIFICATION_TCP_PORT:-8004}
+      - TRACKING_TCP_PORT=${TRACKING_TCP_PORT:-8004}
     volumes:
       - ./apps/booking-service:/app/apps/booking-service
       - ./libs:/app/libs
@@ -110,6 +112,10 @@ services:
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - NOTIFICATION_WS_PORT=${NOTIFICATION_WS_PORT:-3050}
       - NOTIFICATION_TCP_PORT=8004
+      - USER_SERVICE_HOST=${USER_SERVICE_HOST:-user-service}
+      - USER_TCP_PORT=${USER_TCP_PORT:-8008}
+      - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
+      - MATCHING_TCP_PORT=${MATCHING_TCP_PORT:-8006}
     volumes:
       - ./apps/notification-service:/app/apps/notification-service
       - ./libs:/app/libs

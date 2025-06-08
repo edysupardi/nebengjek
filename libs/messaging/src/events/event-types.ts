@@ -1,8 +1,4 @@
-// libs/messaging/src/constants/event-types.ts
-
-/**
- * Enum of all booking related events
- */
+// Enhanced event-types.ts dengan additional booking data
 export enum BookingEvents {
   CREATED = 'booking.created',
   UPDATED = 'booking.updated',
@@ -10,49 +6,94 @@ export enum BookingEvents {
   REJECTED = 'booking.rejected',
   CANCELLED = 'booking.cancelled',
   COMPLETED = 'booking.completed',
+  TAKEN = 'booking.taken', // When booking is taken by another driver
+  DRIVER_SEARCH_REQUESTED = 'booking.driver_search_requested',
+  NEARBY_DRIVERS_FOUND = 'booking.nearby_drivers_found',
+  DRIVERS_READY = 'booking.drivers_ready',
 }
 
-/**
- * Enum of all trip related events
- */
 export enum TripEvents {
   STARTED = 'trip.started',
   UPDATED = 'trip.updated',
   LOCATION_UPDATED = 'trip.location_updated',
   ENDED = 'trip.ended',
+  EARNINGS_UPDATED = 'trip.earnings_updated', // When trip earnings are updated
+  COST_CALCULATED = 'trip.cost_calculated', // When trip cost is calculated
+  REAL_TIME_UPDATE = 'trip.real_time_update', // For real-time updates during the trip
 }
 
-/**
- * Enum of all payment related events
- */
 export enum PaymentEvents {
   CALCULATED = 'payment.calculated',
   COMPLETED = 'payment.completed',
   FAILED = 'payment.failed',
 }
 
-/**
- * Enum of all driver related events
- */
 export enum DriverEvents {
   STATUS_CHANGED = 'driver.status_changed',
   LOCATION_UPDATED = 'driver.location_updated',
+  ONLINE = 'driver.online',
+  OFFLINE = 'driver.offline',
 }
 
-/**
- * Enum of all notification related events
- */
 export enum NotificationEvents {
   SENT = 'notification.sent',
   READ = 'notification.read',
+  DELIVERED = 'notification.delivered',
 }
 
-/**
- * Map of event names to their data payload types
- * This provides type safety when publishing and subscribing to events
- */
+export enum CustomerEvents {
+  REGISTERED = 'customer.registered',
+  PROFILE_UPDATED = 'customer.profile_updated',
+  LOCATION_UPDATED = 'customer.location_updated',
+}
+
 export interface EventPayloadMap {
-  // Booking events
+  [BookingEvents.DRIVER_SEARCH_REQUESTED]: {
+    bookingId: string;
+    customerId: string;
+    latitude: number;
+    longitude: number;
+    destinationLatitude: number;
+    destinationLongitude: number;
+    customerName?: string;
+    radius?: number;
+  };
+
+  // Nearby drivers found
+  [BookingEvents.NEARBY_DRIVERS_FOUND]: {
+    bookingId: string;
+    customerId: string;
+    nearbyDrivers: Array<{
+      userId: string;
+      latitude: number;
+      longitude: number;
+      distance: number;
+    }>;
+    searchRadius: number;
+    foundAt: string;
+  };
+
+  // Drivers ready for booking
+  [BookingEvents.DRIVERS_READY]: {
+    bookingId: string;
+    customerId: string;
+    customerName?: string;
+    latitude: number;
+    longitude: number;
+    destinationLatitude: number;
+    destinationLongitude: number;
+    eligibleDriverIds: string[];
+    nearbyDrivers: Array<{
+      userId: string;
+      latitude: number;
+      longitude: number;
+      distance: number;
+    }>;
+    createdAt: string;
+    expiresAt: string;
+  };
+
+  // **ENHANCED: booking.created with additional UI data**
   [BookingEvents.CREATED]: {
     bookingId: string;
     customerId: string;
@@ -61,6 +102,18 @@ export interface EventPayloadMap {
     destinationLatitude: number;
     destinationLongitude: number;
     customerName?: string;
+    // **NEW: Additional properties for UI support**
+    pickupLocation?: {
+      latitude: number;
+      longitude: number;
+    };
+    destinationLocation?: {
+      latitude: number;
+      longitude: number;
+    };
+    createdAt?: string;
+    expiresAt?: string; // For countdown timer
+    estimatedDistance?: number;
   };
 
   [BookingEvents.UPDATED]: {
@@ -74,6 +127,7 @@ export interface EventPayloadMap {
     estimatedArrivalTime?: number;
   };
 
+  // **ENHANCED: booking.accepted with additional customer notification data**
   [BookingEvents.ACCEPTED]: {
     bookingId: string;
     customerId: string;
@@ -82,6 +136,11 @@ export interface EventPayloadMap {
     driverLatitude?: number;
     driverLongitude?: number;
     estimatedArrivalTime?: number;
+    // **NEW: Additional driver details for customer**
+    driverPhone?: string;
+    vehicleInfo?: {
+      type?: string; // e.g., motorcycle, car, etc.
+    };
   };
 
   [BookingEvents.REJECTED]: {
@@ -110,7 +169,16 @@ export interface EventPayloadMap {
     };
   };
 
-  // Trip events
+  // **NEW: booking.taken event**
+  [BookingEvents.TAKEN]: {
+    bookingId: string;
+    driverId: string;
+    customerId: string;
+    message?: string;
+    timestamp?: string;
+  };
+
+  // ... rest of the events remain unchanged ...
   [TripEvents.STARTED]: {
     tripId: string;
     bookingId: string;
@@ -152,7 +220,41 @@ export interface EventPayloadMap {
     billableKm: number;
   };
 
-  // Payment events
+  [TripEvents.EARNINGS_UPDATED]: {
+    tripId: string;
+    bookingId: string;
+    basePrice: number;
+    finalPrice: number;
+    platformFeePercentage: number;
+    platformFeeAmount: number;
+    driverAmount: number;
+    distance: number;
+    timestamp: string;
+  };
+
+  [TripEvents.COST_CALCULATED]: {
+    tripId: string;
+    bookingId: string;
+    basePrice: number;
+    finalPrice: number;
+    driverAmount: number;
+    platformFeeAmount: number;
+    distance: number;
+    calculation: string;
+    timestamp: string;
+  };
+
+  [TripEvents.REAL_TIME_UPDATE]: {
+    tripId: string;
+    driverId: string;
+    customerId: string;
+    latitude: number;
+    longitude: number;
+    timestamp: string;
+    distanceToDestination: number;
+    isAutoUpdate: boolean;
+  };
+
   [PaymentEvents.CALCULATED]: {
     tripId: string;
     bookingId: string;
@@ -180,7 +282,6 @@ export interface EventPayloadMap {
     reason: string;
   };
 
-  // Driver events
   [DriverEvents.STATUS_CHANGED]: {
     driverId: string;
     status: boolean;
@@ -194,7 +295,21 @@ export interface EventPayloadMap {
     timestamp: number;
   };
 
-  // Notification events
+  [DriverEvents.ONLINE]: {
+    driverId: string;
+    timestamp: number;
+    location?: {
+      latitude: number;
+      longitude: number;
+    };
+  };
+
+  [DriverEvents.OFFLINE]: {
+    driverId: string;
+    timestamp: number;
+    reason?: string;
+  };
+
   [NotificationEvents.SENT]: {
     userId: string;
     type: string;
@@ -206,16 +321,83 @@ export interface EventPayloadMap {
     notificationId: string;
     userId: string;
   };
+
+  [NotificationEvents.DELIVERED]: {
+    notificationId: string;
+    userId: string;
+    channel: 'websocket' | 'push' | 'sms' | 'email';
+  };
+
+  [CustomerEvents.REGISTERED]: {
+    customerId: string;
+    email: string;
+    phone: string;
+    name: string;
+    timestamp: number;
+  };
+
+  [CustomerEvents.PROFILE_UPDATED]: {
+    customerId: string;
+    updatedFields: string[];
+    timestamp: number;
+  };
+
+  [CustomerEvents.LOCATION_UPDATED]: {
+    customerId: string;
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+  };
 }
 
-/**
- * Type-safe event publishing helper type
- */
+// **NEW: Type helpers for driver notification data**
+export interface DriverNotificationData {
+  bookingId: string;
+  customerId: string;
+  customerName: string;
+  pickupLocation: {
+    latitude: number;
+    longitude: number;
+  };
+  destinationLocation: {
+    latitude: number;
+    longitude: number;
+  };
+  distanceToPickup: number;
+  tripDistance: number;
+  driverLocation: {
+    latitude: number;
+    longitude: number;
+  };
+  estimatedEarnings: number;
+  createdAt: string;
+  expiresAt: string;
+  actions: string[];
+  message: string;
+  pickupAddress: string;
+  destinationAddress: string;
+}
+
+// **NEW: Type helpers for customer notification data**
+export interface CustomerNotificationData {
+  bookingId: string;
+  driverId: string;
+  driverName: string;
+  driverLatitude?: number;
+  driverLongitude?: number;
+  estimatedArrivalTime?: number;
+  actions: string[];
+  message: string;
+  driverPhone?: string;
+  vehicleInfo?: {
+    plateNumber?: string;
+    model?: string;
+    color?: string;
+  };
+}
+
 export type PublishEvent<T extends keyof EventPayloadMap> = (event: T, payload: EventPayloadMap[T]) => Promise<void>;
 
-/**
- * Type-safe event subscription helper type
- */
 export type SubscribeToEvent<T extends keyof EventPayloadMap> = (
   event: T,
   callback: (payload: EventPayloadMap[T]) => void,

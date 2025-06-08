@@ -52,16 +52,25 @@ export class DriverService {
     return driverProfile;
   }
 
-  async updateStatus(userId: string, status: boolean) {
+  async updateStatus(userId: string, status: boolean, timestamp?: string, latitude?: number, longitude?: number) {
     const driverProfile = await this.driverProfileRepository.findByUserId(userId);
     if (!driverProfile) {
       this.logger.error(`Driver profile not found for user ID: ${userId}`);
       throw new NotFoundException('Driver profile not found');
     }
+    const updatedAt = timestamp ? new Date(timestamp) : new Date();
 
-    const updatedProfile = await this.driverProfileRepository.update(driverProfile.id, {
-      status,
-    });
+    const updateData: any = {
+      status: status,
+      updatedAt: updatedAt,
+    };
+
+    if (status && latitude && longitude) {
+      updateData.lastLatitude = latitude;
+      updateData.lastLongitude = longitude;
+    }
+
+    const updatedProfile = await this.driverProfileRepository.update(driverProfile.id, updateData);
 
     // Update Redis for real-time tracking
     if (status) {

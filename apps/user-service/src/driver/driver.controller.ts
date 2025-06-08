@@ -27,8 +27,49 @@ export class DriverController {
   @Put('status')
   @Roles(UserRole.DRIVER)
   async updateStatus(@Request() req: any, @Body() statusDto: UpdateDriverStatusDto) {
-    this.logger.log(`Updating status for user ID: ${req.user.userId} to ${statusDto.status}`);
+    this.logger.log(`Updating status for driver ID: ${req.user.userId} to ${statusDto.status}`);
     return this.driverService.updateStatus(req.user.userId, statusDto.status);
+  }
+
+  @MessagePattern('driver.updateStatusWebSocket')
+  async updateStatusWebSocket(data: {
+    userId: string;
+    isOnline: boolean;
+    latitude?: number;
+    longitude?: number;
+    timestamp: string;
+    source: string;
+  }) {
+    try {
+      this.logger.log(
+        `[TCP] Updating driver status via WebSocket: ${data.userId} -> ${data.isOnline ? 'ONLINE' : 'OFFLINE'}`,
+      );
+
+      // Call existing updateStatus method with enhanced data
+      const statusResult = await this.driverService.updateStatus(
+        data.userId,
+        data.isOnline,
+        data.timestamp,
+        data.latitude,
+        data.longitude,
+      );
+
+      return {
+        success: true,
+        userId: data.userId,
+        isOnline: data.isOnline,
+        updatedAt: new Date(),
+        message: 'Driver status updated via WebSocket TCP',
+      };
+    } catch (error) {
+      this.logger.error(`[TCP] Failed to update driver status via WebSocket:`, error);
+      return {
+        success: false,
+        userId: data.userId,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error: error,
+      };
+    }
   }
 
   @UseGuards(TrustedGatewayGuard)

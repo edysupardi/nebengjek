@@ -145,4 +145,25 @@ export class BookingRepository {
       select: query.select,
     });
   }
+
+  async updateWithCondition(id: string, updateData: any, conditions: any): Promise<any> {
+    try {
+      const result = await this.prisma.booking.updateMany({
+        where: {
+          id,
+          ...conditions,
+        },
+        data: updateData,
+      });
+
+      if (result.count === 0) {
+        return null; // No rows updated - condition not met
+      }
+
+      // Return the updated booking
+      return await this.findById(id);
+    } catch (error) {
+      throw error;
+    }
+  }
 }

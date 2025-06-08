@@ -1,17 +1,20 @@
 // src/notification.controller.ts
-import { Controller, Get, Param, Patch, UseGuards, Logger } from '@nestjs/common';
-import { NotificationService } from '@app/notification/notification.service';
-import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
 import { CurrentUser } from '@app/common/decorators/current-user.decorator';
-import { MessagePattern, EventPattern } from '@nestjs/microservices';
+import { TrustedGatewayGuard } from '@app/common/guards/trusted-gateway.guard';
+import { NotificationService } from '@app/notification/notification.service';
+import { Controller, Get, Logger, Param, Patch, UseGuards } from '@nestjs/common';
+import { MessagePattern } from '@nestjs/microservices';
+import { NotificationGateway } from './websocket/notification.gateway';
 
 @Controller('notifications')
 export class NotificationController {
   private readonly logger = new Logger(NotificationController.name);
 
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly notificationGateway: NotificationGateway,
+  ) {}
 
-  // ===== EXISTING HTTP ENDPOINTS (with guard) =====
   @Get()
   @UseGuards(TrustedGatewayGuard)
   async getUserNotifications(@CurrentUser() user: { id: string }) {
@@ -30,307 +33,244 @@ export class NotificationController {
     return this.notificationService.markAllNotificationsAsRead(user.id);
   }
 
-  // ===== TCP MESSAGE PATTERNS (no guard) =====
-
-  /**
-   * TCP Message Pattern: Send notification to user
-   */
-  @MessagePattern('send.notification')
-  async sendNotification(data: {
-    userId: string;
-    type: 'push' | 'sms' | 'email';
-    title: string;
-    message: string;
-    data?: any;
-  }) {
+  @MessagePattern('sendToDriver')
+  async sendToDriver(data: { driverId: string; event: string; data: any }) {
     try {
-      this.logger.log(`Sending ${data.type} notification to user ${data.userId}: ${data.title}`);
+      this.logger.log(`[TCP] Sending ${data.event} to driver ${data.driverId}`);
 
-      // Use existing NotificationService.createNotification method
-      const result = await this.notificationService.createNotification({
-        userId: data.userId,
-        title: data.title,
-        message: data.message,
-        type: data.data?.type || 'general',
-        relatedId: data.data?.bookingId || data.data?.tripId,
-        data: data.data,
-      });
+      const success = this.notificationGateway.sendToDriver(data.driverId, data.event, data.data);
 
-      return result;
+      return {
+        success: success,
+        message: success ? `Notification sent to driver ${data.driverId}` : `Driver ${data.driverId} not connected`,
+        driverId: data.driverId,
+        event: data.event,
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
-      this.logger.error('Error sending notification:', error);
+      this.logger.error(`[TCP] Error sending notification to driver ${data.driverId}:`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        driverId: data.driverId,
+        event: data.event,
       };
     }
   }
 
-  /**
-   * TCP Message Pattern: Get notification history for user
-   */
-  @MessagePattern('get.notifications')
-  async getNotifications(data: { userId: string; page?: number; limit?: number }) {
+  @MessagePattern('sendToCustomer')
+  async sendToCustomer(data: { customerId: string; event: string; data: any }) {
     try {
-      this.logger.log(`Getting notifications for user ${data.userId}`);
+      this.logger.log(`[TCP] Sending ${data.event} to customer ${data.customerId}`);
 
-      // Use existing NotificationService method
-      const notifications = await this.notificationService.getUserNotifications(data.userId);
+      const success = this.notificationGateway.sendToCustomer(data.customerId, data.event, data.data);
+
+      return {
+        success: success,
+        message: success
+          ? `Notification sent to customer ${data.customerId}`
+          : `Customer ${data.customerId} not connected`,
+        customerId: data.customerId,
+        event: data.event,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      this.logger.error(`[TCP] Error sending notification to customer ${data.customerId}:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        customerId: data.customerId,
+        event: data.event,
+      };
+    }
+  }
+
+  @MessagePattern('broadcastToNearbyDrivers')
+  async broadcastToNearbyDrivers(data: {
+    latitude: number;
+    longitude: number;
+    radius: number;
+    event: string;
+    data: any;
+  }) {
+    try {
+      this.logger.log(
+        `[TCP] Broadcasting ${data.event} to drivers within ${data.radius}km of ${data.latitude}, ${data.longitude}`,
+      );
+
+      this.notificationGateway.broadcastToNearbyDrivers(
+        data.latitude,
+        data.longitude,
+        data.radius,
+        data.event,
+        data.data,
+      );
 
       return {
         success: true,
-        data: notifications,
-        pagination: {
-          page: data.page || 1,
-          limit: data.limit || 10,
-          total: Array.isArray(notifications) ? notifications.length : 0,
-        },
+        message: `Broadcast sent to nearby drivers`,
+        location: { latitude: data.latitude, longitude: data.longitude },
+        radius: data.radius,
+        event: data.event,
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      this.logger.error('Error getting notifications:', error);
+      this.logger.error(`[TCP] Error broadcasting to nearby drivers:`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        event: data.event,
       };
     }
   }
 
-  // ===== TCP EVENT PATTERNS =====
-
-  /**
-   * TCP Event Pattern: Handle new booking notifications
-   */
-  @EventPattern('booking.new')
-  async handleNewBooking(data: {
-    bookingId: string;
-    driverId: string;
-    customerId: string;
-    distance: number;
-    pickupLocation?: {
-      latitude: number;
-      longitude: number;
-    };
-  }) {
+  @MessagePattern('broadcastToAllDrivers')
+  async broadcastToAllDrivers(data: { event: string; data: any }) {
     try {
-      this.logger.log(`New booking notification for driver ${data.driverId}, booking ${data.bookingId}`);
+      this.logger.log(`[TCP] Broadcasting ${data.event} to all drivers`);
 
-      // Use existing NotificationService method
-      await this.notificationService.createNotification({
-        userId: data.driverId,
-        title: 'New Booking Request',
-        message: `New booking request ${data.distance.toFixed(1)}km away. Tap to view details.`,
-        type: 'new_booking',
-        relatedId: data.bookingId,
-        data: {
-          bookingId: data.bookingId,
-          type: 'new_booking',
-          distance: data.distance,
-          pickupLocation: data.pickupLocation,
-        },
-      });
+      this.notificationGateway.broadcastToAllDrivers(data.event, data.data);
+
+      return {
+        success: true,
+        message: `Broadcast sent to all drivers`,
+        event: data.event,
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
-      this.logger.error('Error handling new booking notification:', error);
+      this.logger.error(`[TCP] Error broadcasting to all drivers:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        event: data.event,
+      };
     }
   }
 
-  /**
-   * TCP Event Pattern: Handle booking acceptance notifications
-   */
-  @EventPattern('booking.accepted')
-  async handleBookingAccepted(data: {
-    bookingId: string;
-    customerId: string;
-    driverId: string;
-    driverName?: string;
-    estimatedArrival?: number;
-  }) {
+  @MessagePattern('getConnectionStats')
+  async getConnectionStats() {
     try {
-      this.logger.log(`Booking accepted notification for customer ${data.customerId}, booking ${data.bookingId}`);
+      this.logger.log(`[TCP] Getting connection statistics`);
 
-      // Use existing NotificationService method
-      await this.notificationService.createNotification({
-        userId: data.customerId,
-        title: 'Booking Accepted!',
-        message: `${data.driverName || 'Driver'} accepted your booking. Estimated arrival: ${data.estimatedArrival || 5} minutes.`,
-        type: 'booking_accepted',
-        relatedId: data.bookingId,
-        data: {
-          bookingId: data.bookingId,
-          driverId: data.driverId,
-          type: 'booking_accepted',
-          estimatedArrival: data.estimatedArrival,
-        },
-      });
+      const stats = this.notificationGateway.getConnectionStats();
+
+      return {
+        success: true,
+        data: stats,
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
-      this.logger.error('Error handling booking accepted notification:', error);
+      this.logger.error(`[TCP] Error getting connection stats:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        data: {},
+      };
     }
   }
 
-  /**
-   * TCP Event Pattern: Handle booking cancellation notifications
-   */
-  @EventPattern('booking.cancelled')
-  async handleBookingCancelled(data: {
-    bookingId: string;
-    customerId?: string;
-    driverId?: string;
-    cancelledBy: 'customer' | 'driver';
-    reason?: string;
+  @MessagePattern('checkUserConnection')
+  async checkUserConnection(data: { userId: string; userType: 'customer' | 'driver' }) {
+    try {
+      this.logger.log(`[TCP] Checking connection for ${data.userType} ${data.userId}`);
+
+      // Check if user is connected by trying to get their status
+      const userStatus = await this.notificationGateway.getUserStatus(data.userId);
+      const isConnected = userStatus && userStatus.isOnline;
+
+      return {
+        success: true,
+        data: {
+          userId: data.userId,
+          userType: data.userType,
+          isConnected: isConnected,
+          connectionDetails: userStatus,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      this.logger.error(`[TCP] Error checking user connection:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        data: {
+          userId: data.userId,
+          userType: data.userType,
+          isConnected: false,
+        },
+      };
+    }
+  }
+
+  @MessagePattern('sendBulkNotifications')
+  async sendBulkNotifications(data: {
+    notifications: Array<{
+      userId: string;
+      userType: 'customer' | 'driver';
+      event: string;
+      data: any;
+    }>;
   }) {
     try {
-      this.logger.log(`Booking cancelled notification for booking ${data.bookingId}, cancelled by ${data.cancelledBy}`);
+      this.logger.log(`[TCP] Sending ${data.notifications.length} bulk notifications`);
 
-      if (data.cancelledBy === 'customer' && data.driverId) {
-        // Notify driver about customer cancellation
-        await this.notificationService.createNotification({
-          userId: data.driverId,
-          title: 'Booking Cancelled',
-          message: 'Customer has cancelled the booking.',
-          type: 'booking_cancelled',
-          relatedId: data.bookingId,
-          data: {
-            bookingId: data.bookingId,
-            type: 'booking_cancelled',
-            cancelledBy: 'customer',
-            reason: data.reason,
-          },
-        });
-      } else if (data.cancelledBy === 'driver' && data.customerId) {
-        // Notify customer about driver cancellation
-        await this.notificationService.createNotification({
-          userId: data.customerId,
-          title: 'Booking Cancelled',
-          message: "Driver has cancelled the booking. We're finding you another driver.",
-          type: 'booking_cancelled',
-          relatedId: data.bookingId,
-          data: {
-            bookingId: data.bookingId,
-            type: 'booking_cancelled',
-            cancelledBy: 'driver',
-            reason: data.reason,
-          },
-        });
+      const results = [];
+
+      for (const notification of data.notifications) {
+        try {
+          let success = false;
+
+          if (notification.userType === 'driver') {
+            success = this.notificationGateway.sendToDriver(notification.userId, notification.event, notification.data);
+          } else if (notification.userType === 'customer') {
+            success = this.notificationGateway.sendToCustomer(
+              notification.userId,
+              notification.event,
+              notification.data,
+            );
+          }
+
+          results.push({
+            userId: notification.userId,
+            userType: notification.userType,
+            event: notification.event,
+            success: success,
+          });
+        } catch (error) {
+          results.push({
+            userId: notification.userId,
+            userType: notification.userType,
+            event: notification.event,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
       }
-    } catch (error) {
-      this.logger.error('Error handling booking cancelled notification:', error);
-    }
-  }
 
-  /**
-   * TCP Event Pattern: Handle trip start notifications
-   */
-  @EventPattern('trip.started')
-  async handleTripStarted(data: {
-    bookingId: string;
-    customerId: string;
-    driverId: string;
-    estimatedArrival?: number;
-  }) {
-    try {
-      this.logger.log(`Trip started notification for booking ${data.bookingId}`);
+      const successCount = results.filter(r => r.success).length;
 
-      // Notify customer that trip has started
-      await this.notificationService.createNotification({
-        userId: data.customerId,
-        title: 'Trip Started',
-        message: `Your driver has started the trip. Estimated arrival: ${data.estimatedArrival || 15} minutes.`,
-        type: 'trip_started',
-        relatedId: data.bookingId,
+      return {
+        success: true,
+        message: `Sent ${successCount}/${data.notifications.length} notifications successfully`,
         data: {
-          bookingId: data.bookingId,
-          driverId: data.driverId,
-          type: 'trip_started',
-          estimatedArrival: data.estimatedArrival,
+          total: data.notifications.length,
+          successful: successCount,
+          failed: data.notifications.length - successCount,
+          results: results,
         },
-      });
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
-      this.logger.error('Error handling trip started notification:', error);
-    }
-  }
-
-  /**
-   * TCP Event Pattern: Handle trip completion notifications
-   */
-  @EventPattern('booking.completed')
-  async handleBookingCompleted(data: {
-    bookingId: string;
-    customerId: string;
-    driverId?: string;
-    tripDetails?: {
-      distance: number;
-      duration: number;
-      totalCost: number;
-    };
-  }) {
-    try {
-      this.logger.log(`Trip completed notification for booking ${data.bookingId}`);
-
-      // Notify customer about trip completion
-      await this.notificationService.createNotification({
-        userId: data.customerId,
-        title: 'Trip Completed',
-        message: `Your trip has been completed. Total: Rp ${data.tripDetails?.totalCost?.toLocaleString() || 'N/A'}`,
-        type: 'trip_completed',
-        relatedId: data.bookingId,
+      this.logger.error(`[TCP] Error sending bulk notifications:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
         data: {
-          bookingId: data.bookingId,
-          type: 'trip_completed',
-          tripDetails: data.tripDetails,
+          total: data.notifications.length,
+          successful: 0,
+          failed: data.notifications.length,
         },
-      });
-
-      // Notify driver about trip completion
-      if (data.driverId) {
-        await this.notificationService.createNotification({
-          userId: data.driverId,
-          title: 'Trip Completed',
-          message: `Trip completed successfully. Payment processed.`,
-          type: 'trip_completed',
-          relatedId: data.bookingId,
-          data: {
-            bookingId: data.bookingId,
-            type: 'trip_completed',
-            tripDetails: data.tripDetails,
-          },
-        });
-      }
-    } catch (error) {
-      this.logger.error('Error handling trip completed notification:', error);
-    }
-  }
-
-  /**
-   * TCP Event Pattern: Handle driver arrival notifications
-   */
-  @EventPattern('driver.arrived')
-  async handleDriverArrived(data: {
-    bookingId: string;
-    customerId: string;
-    driverId: string;
-    location: {
-      latitude: number;
-      longitude: number;
-    };
-  }) {
-    try {
-      this.logger.log(`Driver arrived notification for booking ${data.bookingId}`);
-
-      // Notify customer that driver has arrived
-      await this.notificationService.createNotification({
-        userId: data.customerId,
-        title: 'Driver Arrived',
-        message: 'Your driver has arrived at the pickup location.',
-        type: 'driver_arrived',
-        relatedId: data.bookingId,
-        data: {
-          bookingId: data.bookingId,
-          driverId: data.driverId,
-          type: 'driver_arrived',
-          location: data.location,
-        },
-      });
-    } catch (error) {
-      this.logger.error('Error handling driver arrived notification:', error);
+      };
     }
   }
 }

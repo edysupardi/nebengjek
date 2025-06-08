@@ -1,8 +1,6 @@
-// libs/messaging/src/messaging.service.ts
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Inject, Optional } from '@nestjs/common';
+import { BookingEvents, EventPayloadMap } from '@app/messaging/events/event-types';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { RedisService } from '@app/database/redis/redis.service';
-import { EventPayloadMap } from '@app/messaging/events/event-types';
 
 @Injectable()
 export class MessagingService implements OnModuleInit, OnModuleDestroy {
@@ -10,9 +8,15 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
   private readonly subscribedChannels: Set<string> = new Set();
   private readonly channelCallbacks: Map<string, Set<(payload: any) => void>> = new Map();
 
-  // Separate connections for publisher and subscriber
   private publisherClient: any;
   private subscriberClient: any;
+  private isInitialized = false;
+
+  private allowedSelfConsumptionEvents = [
+    BookingEvents.DRIVERS_READY,
+    BookingEvents.NEARBY_DRIVERS_FOUND,
+    // tambahkan event lain yang perlu self-consumption
+  ];
 
   constructor(
     private eventEmitter: EventEmitter2,
@@ -20,30 +24,66 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject('MESSAGING_REDIS_CLIENT') private messagingRedisClient: any,
     @Optional() @Inject('MESSAGING_OPTIONS') private options?: any,
   ) {
-    // Create separate connections for publisher and subscriber
     this.initializeRedisConnections();
   }
 
   private initializeRedisConnections(): void {
     const redisConfig = this.getRedisConfig();
-
-    // Create separate Redis clients
     const Redis = require('ioredis');
 
     if (redisConfig) {
-      // Use custom Redis config if provided
-      this.publisherClient = new Redis(redisConfig);
-      this.subscriberClient = new Redis(redisConfig);
+      this.publisherClient = new Redis({
+        ...redisConfig,
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3,
+        lazyConnect: true,
+      });
+      this.subscriberClient = new Redis({
+        ...redisConfig,
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3,
+        lazyConnect: true,
+      });
     } else {
-      // Use default Redis config
       const defaultConfig = {
-        host: process.env.REDIS_HOST || 'redis',
+        host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
-        db: 1, // Use database 1 for messaging
+        db: 2,
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3,
+        lazyConnect: true,
       };
       this.publisherClient = new Redis(defaultConfig);
       this.subscriberClient = new Redis(defaultConfig);
     }
+
+    this.setupErrorHandlers();
+  }
+
+  private setupErrorHandlers(): void {
+    this.publisherClient.on('error', (error: Error) => {
+      this.logger.error('Publisher Redis connection error:', error.message);
+    });
+
+    this.subscriberClient.on('error', (error: Error) => {
+      this.logger.error('Subscriber Redis connection error:', error.message);
+    });
+
+    this.publisherClient.on('ready', () => {
+      this.logger.log('Publisher Redis connection ready');
+    });
+
+    this.subscriberClient.on('ready', () => {
+      this.logger.log('Subscriber Redis connection ready');
+    });
+
+    this.publisherClient.on('reconnecting', () => {
+      this.logger.warn('Publisher Redis reconnecting...');
+    });
+
+    this.subscriberClient.on('reconnecting', () => {
+      this.logger.warn('Subscriber Redis reconnecting...');
+    });
   }
 
   private getRedisConfig(): any {
@@ -54,32 +94,34 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.logger.log('Initializing messaging service with separate Redis connections');
-
-    // Test both connections
     try {
-      await this.publisherClient.ping();
-      await this.subscriberClient.ping();
+      this.logger.log('Initializing messaging service with separate Redis connections');
+
+      await Promise.all([this.publisherClient.connect(), this.subscriberClient.connect()]);
+
+      await Promise.all([this.publisherClient.ping(), this.subscriberClient.ping()]);
+
       this.logger.log('Messaging Redis connections successful (publisher & subscriber)');
+      this.isInitialized = true;
+
+      if (this.options?.channels) {
+        for (const channel of this.options.channels) {
+          this.subscribe(channel as any, payload => {
+            this.logger.debug(`Auto-subscribed channel ${channel} received message`);
+            this.emitLocal(channel as any, payload);
+          });
+        }
+        this.logger.log(`Auto-subscribed to ${this.options.channels.length} channels`);
+      }
     } catch (error) {
       this.logger.error('Messaging Redis connection failed:', error);
-    }
-
-    // Auto-subscribe to configured channels
-    if (this.options?.channels) {
-      for (const channel of this.options.channels) {
-        this.subscribe(channel, payload => {
-          this.logger.debug(`Auto-subscribed channel ${channel} received message`);
-          this.emitLocal(channel, payload);
-        });
-      }
+      this.isInitialized = false;
     }
   }
 
   async onModuleDestroy() {
     this.logger.log('Cleaning up messaging service subscriptions');
 
-    // Unsubscribe from all channels
     for (const channel of this.subscribedChannels) {
       try {
         await this.subscriberClient.unsubscribe(channel);
@@ -88,54 +130,40 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // Close connections
     try {
-      await this.publisherClient.quit();
-      await this.subscriberClient.quit();
+      await Promise.all([this.publisherClient.quit(), this.subscriberClient.quit()]);
+      this.logger.log('Redis connections closed successfully');
     } catch (error) {
       this.logger.error('Error closing Redis connections:', error);
     }
   }
 
-  /**
-   * Emit a local event (in-memory, current service only)
-   * @param event Event name
-   * @param payload Event payload
-   */
   emitLocal<T extends keyof EventPayloadMap>(event: T, payload: EventPayloadMap[T]): void {
-    this.logger.debug(`[LOCAL] Emitting event: ${event}`);
-    this.eventEmitter.emit(event, payload);
+    this.logger.debug(`[LOCAL] Emitting event: ${String(event)}`);
+    this.eventEmitter.emit(String(event), payload);
   }
 
-  /**
-   * Listen for local events
-   * @param event Event name
-   * @param callback Callback to execute when event is received
-   */
   onLocal<T extends keyof EventPayloadMap>(event: T, callback: (payload: EventPayloadMap[T]) => void): void {
-    this.logger.debug(`[LOCAL] Subscribing to event: ${event}`);
-    this.eventEmitter.on(event, callback);
+    this.logger.debug(`[LOCAL] Subscribing to event: ${String(event)}`);
+    this.eventEmitter.on(String(event), callback);
   }
 
-  /**
-   * Publish an event globally across all services
-   * @param event Event name
-   * @param payload Event payload
-   */
   async publish<T extends keyof EventPayloadMap>(event: T, payload: EventPayloadMap[T]): Promise<void> {
+    if (!this.isInitialized) {
+      this.logger.warn(`Cannot publish event ${String(event)} - service not initialized`);
+      return;
+    }
+
     try {
       this.logger.debug(`[GLOBAL] Publishing event: ${String(event)}`);
       const message = JSON.stringify({
-        event,
+        event: String(event),
         payload,
         timestamp: new Date().toISOString(),
         source: this.options?.serviceName || 'unknown',
       });
 
-      // Use dedicated publisher client
       await this.publisherClient.publish(String(event), message);
-
-      // Also emit locally for any local subscribers
       this.emitLocal(event, payload);
 
       this.logger.debug(`[GLOBAL] Successfully published event: ${String(event)}`);
@@ -146,34 +174,33 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Subscribe to global events
-   * @param event Event name
-   * @param callback Callback to execute when event is received
-   */
   subscribe<T extends keyof EventPayloadMap>(event: T, callback: (payload: EventPayloadMap[T]) => void): void {
     const eventName = String(event);
     this.logger.debug(`[GLOBAL] Subscribing to event: ${eventName}`);
 
-    // Add to set of callbacks for this channel
     if (!this.channelCallbacks.has(eventName)) {
       this.channelCallbacks.set(eventName, new Set());
     }
     this.channelCallbacks.get(eventName)!.add(callback as any);
 
-    // Only subscribe to Redis channel once per event type
     if (!this.subscribedChannels.has(eventName)) {
       this.subscribedChannels.add(eventName);
 
-      // Use dedicated subscriber client
-      this.subscriberClient.subscribe(eventName);
+      if (this.isInitialized) {
+        this.subscriberClient.subscribe(eventName, (error: Error) => {
+          if (error) {
+            this.logger.error(`Error subscribing to ${eventName}:`, error);
+          } else {
+            this.logger.debug(`Successfully subscribed to: ${eventName}`);
+          }
+        });
+      }
+
       this.subscriberClient.on('message', (channel: string, message: string) => {
         if (channel === eventName) {
           this.processRedisMessage(eventName, message);
         }
       });
-
-      this.logger.debug(`[GLOBAL] Successfully subscribed to event: ${eventName}`);
     }
   }
 
@@ -181,15 +208,21 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     try {
       const data = JSON.parse(message);
 
-      // Skip messages sent by this instance if specified in options
-      if (this.options?.skipSelfMessages && data.source === this.options.serviceName) {
+      // 🔥 FIX: Check if self-consumption is allowed for this event
+      const isFromSelf = this.options?.skipSelfMessages && data.source === this.options.serviceName;
+      const isSelfConsumptionAllowed = this.allowedSelfConsumptionEvents.includes(eventName as any);
+
+      if (isFromSelf && !isSelfConsumptionAllowed) {
         this.logger.debug(`[GLOBAL] Skipping self-sent message for event: ${eventName}`);
         return;
       }
 
+      if (isFromSelf && isSelfConsumptionAllowed) {
+        this.logger.debug(`[GLOBAL] Processing self-sent message for event: ${eventName} (allowed)`);
+      }
+
       this.logger.debug(`[GLOBAL] Processing message for event: ${eventName}`);
 
-      // Execute all callbacks registered for this event
       const callbacks = this.channelCallbacks.get(eventName);
       if (callbacks) {
         for (const cb of callbacks) {
@@ -206,17 +239,11 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Unsubscribe from a global event
-   * @param event Event name
-   * @param callback Optional specific callback to remove. If not provided, unsubscribe from all callbacks for this event.
-   */
   unsubscribe<T extends keyof EventPayloadMap>(event: T, callback?: (payload: EventPayloadMap[T]) => void): void {
     const eventName = String(event);
     this.logger.debug(`[GLOBAL] Unsubscribing from event: ${eventName}`);
 
     if (callback) {
-      // Remove specific callback
       const callbacks = this.channelCallbacks.get(eventName);
       if (callbacks) {
         callbacks.delete(callback as any);
@@ -227,18 +254,12 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
         }
       }
     } else {
-      // Remove all callbacks for this event
       this.channelCallbacks.delete(eventName);
       this.subscriberClient.unsubscribe(eventName);
       this.subscribedChannels.delete(eventName);
     }
   }
 
-  /**
-   * Subscribe to multiple events with the same callback
-   * @param events Array of event names
-   * @param callback Callback to execute when any of the events are received
-   */
   subscribeToMany(events: Array<keyof EventPayloadMap>, callback: (eventName: string, payload: any) => void): void {
     for (const event of events) {
       const eventName = String(event);
@@ -248,27 +269,39 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Get the publisher Redis client for advanced use cases
-   */
   getPublisherClient(): any {
     return this.publisherClient;
   }
 
-  /**
-   * Get the subscriber Redis client for advanced use cases
-   */
   getSubscriberClient(): any {
     return this.subscriberClient;
   }
 
-  /**
-   * Get connection info for debugging
-   */
-  getConnectionInfo(): { publisher: string; subscriber: string } {
+  getConnectionInfo(): { publisher: string; subscriber: string; initialized: boolean } {
     return {
       publisher: `${this.publisherClient.options.host}:${this.publisherClient.options.port}/db${this.publisherClient.options.db || 0}`,
       subscriber: `${this.subscriberClient.options.host}:${this.subscriberClient.options.port}/db${this.subscriberClient.options.db || 0}`,
+      initialized: this.isInitialized,
     };
+  }
+
+  isReady(): boolean {
+    return this.isInitialized;
+  }
+
+  async healthCheck(): Promise<{ status: string; connections: any }> {
+    try {
+      await Promise.all([this.publisherClient.ping(), this.subscriberClient.ping()]);
+
+      return {
+        status: 'healthy',
+        connections: this.getConnectionInfo(),
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        connections: this.getConnectionInfo(),
+      };
+    }
   }
 }
