@@ -1,46 +1,29 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek Matching Service - Updated Redis Configuration'
+Description: 'Minimal Matching Service - No IAM/ECS Creation'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
-    Description: The deployment environment
 
   VpcId:
     Type: String
-    Description: VPC where the resources will be deployed
+    Description: VPC ID
+    Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
-    Description: First private subnet
+    Description: Private subnet 1
+    Default: subnet-xxx # You need to get this from VPC stack
 
   PrivateSubnet2:
     Type: String
-    Description: Second private subnet
-
-  ECSClusterName:
-    Type: String
-    Description: Name of the ECS cluster
-
-  ECRRepository:
-    Type: String
-    Description: ECR repository name for Matching Service
-    Default: matching-service
-
-  # Redis Parameters (primary dependency for matching algorithm)
-  RedisHost:
-    Type: String
-    Description: Redis host (from ElastiCache)
-
-  RedisPort:
-    Type: String
-    Default: '6379'
-    Description: Redis port
+    Description: Private subnet 2
+    Default: subnet-yyy # You need to get this from VPC stack
 
 Resources:
-  # Security Group for Matching Service
+  # Only create what we CAN create (EC2 and Logs resources)
+
   MatchingServiceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -51,7 +34,7 @@ Resources:
           FromPort: 3003
           ToPort: 3003
           CidrIp: 10.0.0.0/16
-          Description: Matching Service port
+          Description: Matching Service HTTP port
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -59,171 +42,46 @@ Resources:
         - Key: Name
           Value: !Sub '${Environment}-matching-service-sg'
 
-  # Matching Service load balancer (internal)
-  MatchingServiceALB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Scheme: internal
-      SecurityGroups:
-        - !Ref MatchingServiceSecurityGroup
-      Subnets:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      Type: application
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-matching-service-alb'
-
-  # Matching Service target group
-  MatchingServiceTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckEnabled: true
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /health
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Port: 3003
-      Protocol: HTTP
-      TargetType: ip
-      VpcId: !Ref VpcId
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-matching-service-tg'
-
-  # Matching Service HTTP Listener
-  MatchingServiceALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref MatchingServiceTargetGroup
-      LoadBalancerArn: !Ref MatchingServiceALB
-      Port: 3003
-      Protocol: HTTP
-
-  # IAM Roles
-  MatchingServiceExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  MatchingServiceTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-
-  # Matching Service Task Definition
-  MatchingServiceTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub '${Environment}-matching-service'
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: '256'
-      Memory: '512'
-      ExecutionRoleArn: !GetAtt MatchingServiceExecutionRole.Arn
-      TaskRoleArn: !GetAtt MatchingServiceTaskRole.Arn
-      ContainerDefinitions:
-        - Name: matching-service
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
-          Essential: true
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref MatchingServiceLogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: matching-service
-          PortMappings:
-            - ContainerPort: 3003
-          Environment:
-            - Name: NODE_ENV
-              Value: production
-            - Name: MATCHING_SERVICE_PORT
-              Value: '3003'
-            - Name: REDIS_HOST
-              Value: !Ref RedisHost
-            - Name: REDIS_PORT
-              Value: !Ref RedisPort
-          HealthCheck:
-            Command: ['CMD-SHELL', 'curl -f http://localhost:3003/health || exit 1']
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
-
-  # Matching Service Service
-  MatchingServiceService:
-    Type: AWS::ECS::Service
-    DependsOn: MatchingServiceALBListener
-    Properties:
-      ServiceName: !Sub '${Environment}-matching-service'
-      Cluster: !Ref ECSClusterName
-      TaskDefinition: !Ref MatchingServiceTaskDefinition
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 50
-      DesiredCount: 1
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          SecurityGroups:
-            - !Ref MatchingServiceSecurityGroup
-          Subnets:
-            - !Ref PrivateSubnet1
-            - !Ref PrivateSubnet2
-      LoadBalancers:
-        - ContainerName: matching-service
-          ContainerPort: 3003
-          TargetGroupArn: !Ref MatchingServiceTargetGroup
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-matching-service-service'
-
-  # CloudWatch Logs Group
   MatchingServiceLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${Environment}/matching-service'
-      RetentionInDays: 30
+      RetentionInDays: 7
+
+  # Target Group for Load Balancer (if ALB exists)
+  MatchingServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${Environment}-matching-tg'
+      Port: 3003
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-matching-service-tg'
 
 Outputs:
-  ServiceUrl:
-    Description: URL of the Matching Service
-    Value: !Sub 'http://${MatchingServiceALB.DNSName}:3003'
-    Export:
-      Name: !Sub '${Environment}-MatchingServiceUrl'
-
-  MatchingServiceHost:
-    Description: Host of the Matching Service
-    Value: !GetAtt MatchingServiceALB.DNSName
-    Export:
-      Name: !Sub '${Environment}-MatchingServiceHost'
-
-  MatchingServicePort:
-    Description: Port of the Matching Service
-    Value: '3003'
-    Export:
-      Name: !Sub '${Environment}-MatchingServicePort'
-
-  MatchingServiceSecurityGroupId:
+  SecurityGroupId:
     Description: Security Group ID for Matching Service
     Value: !Ref MatchingServiceSecurityGroup
     Export:
-      Name: !Sub '${Environment}-MatchingServiceSecurityGroupId'
+      Name: !Sub '${Environment}-MatchingServiceSecurityGroup'
+
+  LogGroupName:
+    Description: CloudWatch Log Group for Matching Service
+    Value: !Ref MatchingServiceLogGroup
+    Export:
+      Name: !Sub '${Environment}-MatchingServiceLogGroup'
+
+  TargetGroupArn:
+    Description: Target Group ARN for Matching Service
+    Value: !Ref MatchingServiceTargetGroup
+    Export:
+      Name: !Sub '${Environment}-MatchingServiceTargetGroup'

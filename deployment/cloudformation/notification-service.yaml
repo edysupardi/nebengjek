@@ -1,72 +1,29 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek Notification Service - Updated for External Database'
+Description: 'Minimal Notification Service - No IAM/ECS Creation'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
-    Description: The deployment environment
 
   VpcId:
     Type: String
-    Description: VPC where the resources will be deployed
+    Description: VPC ID
+    Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
-    Description: First private subnet
+    Description: Private subnet 1
+    Default: subnet-xxx # You need to get this from VPC stack
 
   PrivateSubnet2:
     Type: String
-    Description: Second private subnet
-
-  ECSClusterName:
-    Type: String
-    Description: Name of the ECS cluster
-
-  ECRRepository:
-    Type: String
-    Description: ECR repository name for Notification Service
-    Default: notification-service
-
-  # External Database Parameters (from nebengjek-db deployment)
-  DatabaseEndpoint:
-    Type: String
-    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
-    Description: RDS PostgreSQL endpoint
-
-  DatabasePort:
-    Type: String
-    Default: '5432'
-    Description: Database port
-
-  DatabaseName:
-    Type: String
-    Default: nebengjek_prod
-    Description: Database name
-
-  DatabaseUsername:
-    Type: String
-    Default: nebengjek
-    Description: Database username
-
-  DatabasePassword:
-    Type: String
-    NoEcho: true
-    Description: Database password (store in secrets manager)
-
-  # Redis Parameters
-  RedisHost:
-    Type: String
-    Description: Redis host (from ElastiCache)
-
-  RedisPort:
-    Type: String
-    Default: '6379'
-    Description: Redis port
+    Description: Private subnet 2
+    Default: subnet-yyy # You need to get this from VPC stack
 
 Resources:
-  # Security Group for Notification Service
+  # Only create what we CAN create (EC2 and Logs resources)
+
   NotificationServiceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -77,7 +34,7 @@ Resources:
           FromPort: 3004
           ToPort: 3004
           CidrIp: 10.0.0.0/16
-          Description: Notification Service port
+          Description: Notification Service HTTP port
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -85,173 +42,46 @@ Resources:
         - Key: Name
           Value: !Sub '${Environment}-notification-service-sg'
 
-  # Notification Service load balancer (internal)
-  NotificationServiceALB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Scheme: internal
-      SecurityGroups:
-        - !Ref NotificationServiceSecurityGroup
-      Subnets:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      Type: application
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-notification-service-alb'
-
-  # Notification Service target group
-  NotificationServiceTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckEnabled: true
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /health
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Port: 3004
-      Protocol: HTTP
-      TargetType: ip
-      VpcId: !Ref VpcId
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-notification-service-tg'
-
-  # Notification Service HTTP Listener
-  NotificationServiceALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref NotificationServiceTargetGroup
-      LoadBalancerArn: !Ref NotificationServiceALB
-      Port: 3004
-      Protocol: HTTP
-
-  # IAM Roles
-  NotificationServiceExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  NotificationServiceTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-
-  # Notification Service Task Definition
-  NotificationServiceTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub '${Environment}-notification-service'
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: '256'
-      Memory: '512'
-      ExecutionRoleArn: !GetAtt NotificationServiceExecutionRole.Arn
-      TaskRoleArn: !GetAtt NotificationServiceTaskRole.Arn
-      ContainerDefinitions:
-        - Name: notification-service
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
-          Essential: true
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref NotificationServiceLogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: notification-service
-          PortMappings:
-            - ContainerPort: 3004
-          Environment:
-            - Name: NODE_ENV
-              Value: production
-            - Name: NOTIFICATION_SERVICE_PORT
-              Value: '3004'
-            - Name: DATABASE_URL
-              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
-            - Name: REDIS_HOST
-              Value: !Ref RedisHost
-            - Name: REDIS_PORT
-              Value: !Ref RedisPort
-          HealthCheck:
-            Command: ['CMD-SHELL', 'curl -f http://localhost:3004/health || exit 1']
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
-
-  # Notification Service Service
-  NotificationServiceService:
-    Type: AWS::ECS::Service
-    DependsOn: NotificationServiceALBListener
-    Properties:
-      ServiceName: !Sub '${Environment}-notification-service'
-      Cluster: !Ref ECSClusterName
-      TaskDefinition: !Ref NotificationServiceTaskDefinition
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 50
-      DesiredCount: 1
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          SecurityGroups:
-            - !Ref NotificationServiceSecurityGroup
-          Subnets:
-            - !Ref PrivateSubnet1
-            - !Ref PrivateSubnet2
-      LoadBalancers:
-        - ContainerName: notification-service
-          ContainerPort: 3004
-          TargetGroupArn: !Ref NotificationServiceTargetGroup
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-notification-service-service'
-
-  # CloudWatch Logs Group
   NotificationServiceLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${Environment}/notification-service'
-      RetentionInDays: 30
+      RetentionInDays: 7
+
+  # Target Group for Load Balancer (if ALB exists)
+  NotificationServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${Environment}-notification-tg'
+      Port: 3004
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-notification-service-tg'
 
 Outputs:
-  ServiceUrl:
-    Description: URL of the Notification Service
-    Value: !Sub 'http://${NotificationServiceALB.DNSName}:3004'
-    Export:
-      Name: !Sub '${Environment}-NotificationServiceUrl'
-
-  NotificationServiceHost:
-    Description: Host of the Notification Service
-    Value: !GetAtt NotificationServiceALB.DNSName
-    Export:
-      Name: !Sub '${Environment}-NotificationServiceHost'
-
-  NotificationServicePort:
-    Description: Port of the Notification Service
-    Value: '3004'
-    Export:
-      Name: !Sub '${Environment}-NotificationServicePort'
-
-  NotificationServiceSecurityGroupId:
+  SecurityGroupId:
     Description: Security Group ID for Notification Service
     Value: !Ref NotificationServiceSecurityGroup
     Export:
-      Name: !Sub '${Environment}-NotificationServiceSecurityGroupId'
+      Name: !Sub '${Environment}-NotificationServiceSecurityGroup'
+
+  LogGroupName:
+    Description: CloudWatch Log Group for Notification Service
+    Value: !Ref NotificationServiceLogGroup
+    Export:
+      Name: !Sub '${Environment}-NotificationServiceLogGroup'
+
+  TargetGroupArn:
+    Description: Target Group ARN for Notification Service
+    Value: !Ref NotificationServiceTargetGroup
+    Export:
+      Name: !Sub '${Environment}-NotificationServiceTargetGroup'
