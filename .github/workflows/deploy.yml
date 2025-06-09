@@ -47,11 +47,11 @@ jobs:
       - name: Get VPC Information
         id: get-vpc
         run: |
-          VPC_ID=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || prod }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
-          PUBLIC_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || prod }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet1`].OutputValue' --output text)
-          PUBLIC_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || prod }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet2`].OutputValue' --output text)
-          PRIVATE_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || prod }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet1`].OutputValue' --output text)
-          PRIVATE_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || prod }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet2`].OutputValue' --output text)
+          VPC_ID=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
+          PUBLIC_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet1`].OutputValue' --output text)
+          PUBLIC_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet2`].OutputValue' --output text)
+          PRIVATE_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet1`].OutputValue' --output text)
+          PRIVATE_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet2`].OutputValue' --output text)
 
           echo "vpc-id=$VPC_ID" >> $GITHUB_OUTPUT
           echo "public-subnet-1=$PUBLIC_SUBNET_1" >> $GITHUB_OUTPUT
