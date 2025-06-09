@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Kong Gateway for NebengJek Microservices'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: The deployment environment
+
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+
+  PublicSubnet1:
+    Type: String
+    Description: First public subnet
+
+  PublicSubnet2:
+    Type: String
+    Description: Second public subnet
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+
+  DatabaseEndpoint:
+    Type: String
+    Description: PostgreSQL database endpoint for Kong
+
+  DatabaseUsername:
+    Type: String
+    Description: Database username
+
+  DatabasePassword:
+    Type: String
+    Description: Database password
+    NoEcho: true
+
+Resources:
+  # Security Group for Kong Gateway
+  KongSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Kong Gateway
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+          Description: Kong Proxy port
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+          CidrIp: 10.0.0.0/16
+          Description: Kong Admin API (internal only)
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-kong-sg'
+
+  # Application Load Balancer for Kong
+  KongALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref KongSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-kong-alb'
+
+  # Target Group for Kong Proxy
+  KongProxyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /status
+      HealthCheckPort: 8000
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-kong-proxy-tg'
+
+  # Target Group for Kong Admin
+  KongAdminTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /status
+      HealthCheckPort: 8001
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 8001
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-kong-admin-tg'
+
+  # ALB Listener for Kong Proxy (Port 80)
+  KongProxyListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref KongProxyTargetGroup
+      LoadBalancerArn: !Ref KongALB
+      Port: 80
+      Protocol: HTTP
+
+  # ALB Listener for Kong Admin (Port 8001) - Internal only via path
+  KongAdminListener:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref KongAdminTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: ['/admin/*']
+      ListenerArn: !Ref KongProxyListener
+      Priority: 100
+
+  # Kong Task Definition
+  KongTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-kong'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt KongExecutionRole.Arn
+      TaskRoleArn: !GetAtt KongTaskRole.Arn
+      ContainerDefinitions:
+        - Name: kong
+          Image: kong:3.4
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref KongLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: kong
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+            - ContainerPort: 8001
+              Protocol: tcp
+          Environment:
+            - Name: KONG_DATABASE
+              Value: postgres
+            - Name: KONG_PG_HOST
+              Value: !Ref DatabaseEndpoint
+            - Name: KONG_PG_PORT
+              Value: '5432'
+            - Name: KONG_PG_USER
+              Value: !Ref DatabaseUsername
+            - Name: KONG_PG_PASSWORD
+              Value: !Ref DatabasePassword
+            - Name: KONG_PG_DATABASE
+              Value: kong
+            - Name: KONG_PROXY_ACCESS_LOG
+              Value: /dev/stdout
+            - Name: KONG_ADMIN_ACCESS_LOG
+              Value: /dev/stdout
+            - Name: KONG_PROXY_ERROR_LOG
+              Value: /dev/stderr
+            - Name: KONG_ADMIN_ERROR_LOG
+              Value: /dev/stderr
+            - Name: KONG_ADMIN_LISTEN
+              Value: 0.0.0.0:8001
+            - Name: KONG_PROXY_LISTEN
+              Value: 0.0.0.0:8000
+          HealthCheck:
+            Command: ['CMD', 'kong', 'health']
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+        # Kong DB Migration Init Container
+        - Name: kong-migration
+          Image: kong:3.4
+          Essential: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref KongLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: kong-migration
+          Environment:
+            - Name: KONG_DATABASE
+              Value: postgres
+            - Name: KONG_PG_HOST
+              Value: !Ref DatabaseEndpoint
+            - Name: KONG_PG_PORT
+              Value: '5432'
+            - Name: KONG_PG_USER
+              Value: !Ref DatabaseUsername
+            - Name: KONG_PG_PASSWORD
+              Value: !Ref DatabasePassword
+            - Name: KONG_PG_DATABASE
+              Value: kong
+          Command: ['sh', '-c', 'kong migrations bootstrap && kong migrations up']
+
+  # Kong ECS Service
+  KongService:
+    Type: AWS::ECS::Service
+    DependsOn: KongProxyListener
+    Properties:
+      ServiceName: !Sub '${Environment}-kong'
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref KongTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 2
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref KongSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: kong
+          ContainerPort: 8000
+          TargetGroupArn: !Ref KongProxyTargetGroup
+        - ContainerName: kong
+          ContainerPort: 8001
+          TargetGroupArn: !Ref KongAdminTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-kong-service'
+
+  # CloudWatch Logs Group
+  KongLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}/kong'
+      RetentionInDays: 30
+
+  # IAM Roles
+  KongExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  KongTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+Outputs:
+  KongProxyUrl:
+    Description: Kong Proxy URL (API Gateway endpoint)
+    Value: !Sub 'http://${KongALB.DNSName}'
+    Export:
+      Name: !Sub '${Environment}-KongProxyUrl'
+
+  KongAdminUrl:
+    Description: Kong Admin URL (for configuration)
+    Value: !Sub 'http://${KongALB.DNSName}/admin'
+    Export:
+      Name: !Sub '${Environment}-KongAdminUrl'
+
+  KongSecurityGroupId:
+    Description: Security Group ID for Kong
+    Value: !Ref KongSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-KongSecurityGroupId'

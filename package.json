@@ -69,7 +69,8 @@
     "typeorm": "^0.3.22",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "xss": "^1.0.15"
+    "xss": "^1.0.15",
+    "tsx": "^3.12.0"
   },
   "scripts": {
     "build": "nest build",
@@ -108,7 +109,10 @@
     "lint": "eslint . --fix",
     "lint:check": "eslint .",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:migrate": "prisma migrate deploy",
+    "db:generate": "prisma generate"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

@@ -1,28 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek Redis Stack'
+Description: 'NebengJek Redis Stack - Simplified'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues:
-      - dev
-      - staging
-      - prod
+    AllowedValues: [dev, staging, prod]
     Description: The deployment environment
-  
+
   VpcId:
     Type: String
     Description: VPC where the resources will be deployed
-  
+
   PrivateSubnet1:
     Type: String
     Description: First private subnet
-  
+
   PrivateSubnet2:
     Type: String
     Description: Second private subnet
-  
+
   RedisNodeType:
     Type: String
     Default: cache.t3.micro
@@ -31,11 +28,9 @@ Parameters:
       - cache.t3.micro
       - cache.t3.small
       - cache.t3.medium
-      - cache.m5.large
-      - cache.r5.large
 
 Resources:
-  # Security Group for Redis
+  # Security Group for Redis - Self-contained
   RedisSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -45,15 +40,15 @@ Resources:
         - IpProtocol: tcp
           FromPort: 6379
           ToPort: 6379
-          SourceSecurityGroupId: !ImportValue ApiGatewaySecurityGroupId
-        - IpProtocol: tcp
-          FromPort: 6379
-          ToPort: 6379
-          SourceSecurityGroupId: !ImportValue UserServiceSecurityGroupId
+          CidrIp: 10.0.0.0/16 # Allow from entire VPC
+          Description: Redis access from VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-redis-sg"
-  
+          Value: !Sub '${Environment}-redis-sg'
+
   # Redis Subnet Group
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
@@ -64,15 +59,15 @@ Resources:
         - !Ref PrivateSubnet2
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-redis-subnet-group"
-  
+          Value: !Sub '${Environment}-redis-subnet-group'
+
   # Redis Cluster
   RedisCluster:
     Type: AWS::ElastiCache::CacheCluster
     Properties:
       CacheNodeType: !Ref RedisNodeType
       Engine: redis
-      EngineVersion: 6.x
+      EngineVersion: '6.2'
       NumCacheNodes: 1
       CacheParameterGroupName: default.redis6.x
       CacheSubnetGroupName: !Ref RedisSubnetGroup
@@ -80,23 +75,29 @@ Resources:
         - !Ref RedisSecurityGroup
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-nebengjek-redis"
+          Value: !Sub '${Environment}-nebengjek-redis'
 
 Outputs:
   RedisEndpoint:
     Description: Endpoint of the Redis cluster
-    Value: !Sub "${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}"
+    Value: !Sub '${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}'
     Export:
-      Name: !Sub "${Environment}-RedisEndpoint"
-  
+      Name: !Sub '${Environment}-RedisEndpoint'
+
   RedisHost:
     Description: Host of the Redis cluster
     Value: !GetAtt RedisCluster.RedisEndpoint.Address
     Export:
-      Name: !Sub "${Environment}-RedisHost"
-  
+      Name: !Sub '${Environment}-RedisHost'
+
   RedisPort:
     Description: Port of the Redis cluster
     Value: !GetAtt RedisCluster.RedisEndpoint.Port
     Export:
-      Name: !Sub "${Environment}-RedisPort"
+      Name: !Sub '${Environment}-RedisPort'
+
+  RedisSecurityGroupId:
+    Description: Security Group ID for Redis
+    Value: !Ref RedisSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-RedisSecurityGroupId'

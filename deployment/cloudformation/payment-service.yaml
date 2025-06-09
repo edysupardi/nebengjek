@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek User Service - Simplified'
+Description: 'NebengJek Payment Service'
 
 Parameters:
   Environment:
@@ -26,8 +26,8 @@ Parameters:
 
   ECRRepository:
     Type: String
-    Description: ECR repository name for User Service
-    Default: user-service
+    Description: ECR repository name for Payment Service
+    Default: payment-service
 
   DatabaseEndpoint:
     Type: String
@@ -47,52 +47,43 @@ Parameters:
     Description: Database password
     NoEcho: true
 
-  RedisHost:
-    Type: String
-    Description: Redis host
-
-  RedisPort:
-    Type: String
-    Description: Redis port
-    Default: '6379'
-
 Resources:
-  # Security Group for User Service
-  UserServiceSecurityGroup:
+  # Security Group for Payment Service
+  PaymentServiceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for User Service
+      GroupDescription: Security group for Payment Service
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 3001
-          ToPort: 3001
-          CidrIp: 10.0.0.0/16 # Allow from VPC
-          Description: User Service port
+          FromPort: 3005
+          ToPort: 3005
+          CidrIp: 10.0.0.0/16
+          Description: Payment Service port
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub '${Environment}-user-service-sg'
+          Value: !Sub '${Environment}-payment-service-sg'
 
-  # User Service load balancer (internal)
-  UserServiceALB:
+  # Payment Service load balancer (internal)
+  PaymentServiceALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Scheme: internal
       SecurityGroups:
-        - !Ref UserServiceSecurityGroup
+        - !Ref PaymentServiceSecurityGroup
       Subnets:
         - !Ref PrivateSubnet1
         - !Ref PrivateSubnet2
       Type: application
       Tags:
         - Key: Name
-          Value: !Sub '${Environment}-user-service-alb'
+          Value: !Sub '${Environment}-payment-service-alb'
 
-  # User Service target group
-  UserServiceTargetGroup:
+  # Payment Service target group
+  PaymentServiceTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       HealthCheckEnabled: true
@@ -100,113 +91,101 @@ Resources:
       HealthCheckPath: /health
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      Port: 3001
+      Port: 3005
       Protocol: HTTP
       TargetType: ip
       VpcId: !Ref VpcId
       Tags:
         - Key: Name
-          Value: !Sub '${Environment}-user-service-tg'
+          Value: !Sub '${Environment}-payment-service-tg'
 
-  # User Service HTTP Listener
-  UserServiceALBListener:
+  # Payment Service HTTP Listener
+  PaymentServiceALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref UserServiceTargetGroup
-      LoadBalancerArn: !Ref UserServiceALB
-      Port: 3001
+          TargetGroupArn: !Ref PaymentServiceTargetGroup
+      LoadBalancerArn: !Ref PaymentServiceALB
+      Port: 3005
       Protocol: HTTP
 
-  # User Service Task Definition
-  UserServiceTaskDefinition:
+  # Payment Service Task Definition
+  PaymentServiceTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub '${Environment}-user-service'
+      Family: !Sub '${Environment}-payment-service'
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
       Cpu: '256'
       Memory: '512'
-      ExecutionRoleArn: !GetAtt UserServiceExecutionRole.Arn
-      TaskRoleArn: !GetAtt UserServiceTaskRole.Arn
+      ExecutionRoleArn: !GetAtt PaymentServiceExecutionRole.Arn
+      TaskRoleArn: !GetAtt PaymentServiceTaskRole.Arn
       ContainerDefinitions:
-        - Name: user-service
+        - Name: payment-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
           Essential: true
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Ref UserServiceLogGroup
+              awslogs-group: !Ref PaymentServiceLogGroup
               awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: user-service
+              awslogs-stream-prefix: payment-service
           PortMappings:
-            - ContainerPort: 3001
+            - ContainerPort: 3005
           Environment:
             - Name: NODE_ENV
               Value: !Ref Environment
             - Name: DATABASE_URL
               Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:5432/${DatabaseName}?schema=public'
-            - Name: REDIS_HOST
-              Value: !Ref RedisHost
-            - Name: REDIS_PORT
-              Value: !Ref RedisPort
-            - Name: JWT_ACCESS_SECRET
-              Value: nebengjek_jwt_access_secret_2025 # For assessment
-            - Name: JWT_REFRESH_SECRET
-              Value: nebengjek_jwt_refresh_secret_2025 # For assessment
-            - Name: JWT_ACCESS_EXPIRES_IN
-              Value: '15m'
-            - Name: JWT_REFRESH_EXPIRES_IN
-              Value: '7d'
-            - Name: USER_SERVICE_PORT
-              Value: '3001'
+            - Name: PAYMENT_SERVICE_PORT
+              Value: '3005'
           HealthCheck:
-            Command: ['CMD-SHELL', 'curl -f http://localhost:3001/health || exit 1']
+            Command: ['CMD-SHELL', 'curl -f http://localhost:3005/health || exit 1']
             Interval: 30
             Timeout: 5
             Retries: 3
             StartPeriod: 60
 
-  # User Service Service
-  UserServiceService:
+  # Payment Service Service
+  PaymentServiceService:
     Type: AWS::ECS::Service
-    DependsOn: UserServiceALBListener
+    DependsOn: PaymentServiceALBListener
     Properties:
-      ServiceName: !Sub '${Environment}-user-service'
+      ServiceName: !Sub '${Environment}-payment-service'
       Cluster: !Ref ECSClusterName
-      TaskDefinition: !Ref UserServiceTaskDefinition
+      TaskDefinition: !Ref PaymentServiceTaskDefinition
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 50
-      DesiredCount: 1 # Start with 1 for assessment
+      DesiredCount: 1
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
           SecurityGroups:
-            - !Ref UserServiceSecurityGroup
+            - !Ref PaymentServiceSecurityGroup
           Subnets:
             - !Ref PrivateSubnet1
             - !Ref PrivateSubnet2
       LoadBalancers:
-        - ContainerName: user-service
-          ContainerPort: 3001
-          TargetGroupArn: !Ref UserServiceTargetGroup
+        - ContainerName: payment-service
+          ContainerPort: 3005
+          TargetGroupArn: !Ref PaymentServiceTargetGroup
       Tags:
         - Key: Name
-          Value: !Sub '${Environment}-user-service-service'
+          Value: !Sub '${Environment}-payment-service-service'
 
   # CloudWatch Logs Group
-  UserServiceLogGroup:
+  PaymentServiceLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/ecs/${Environment}/user-service'
+      LogGroupName: !Sub '/ecs/${Environment}/payment-service'
       RetentionInDays: 30
 
   # IAM Roles
-  UserServiceExecutionRole:
+  PaymentServiceExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -219,7 +198,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
-  UserServiceTaskRole:
+  PaymentServiceTaskRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -232,25 +211,25 @@ Resources:
 
 Outputs:
   ServiceUrl:
-    Description: URL of the User Service
-    Value: !Sub 'http://${UserServiceALB.DNSName}:3001'
+    Description: URL of the Payment Service
+    Value: !Sub 'http://${PaymentServiceALB.DNSName}:3005'
     Export:
-      Name: !Sub '${Environment}-UserServiceUrl'
+      Name: !Sub '${Environment}-PaymentServiceUrl'
 
-  UserServiceHost:
-    Description: Host of the User Service
-    Value: !GetAtt UserServiceALB.DNSName
+  PaymentServiceHost:
+    Description: Host of the Payment Service
+    Value: !GetAtt PaymentServiceALB.DNSName
     Export:
-      Name: !Sub '${Environment}-UserServiceHost'
+      Name: !Sub '${Environment}-PaymentServiceHost'
 
-  UserServicePort:
-    Description: Port of the User Service
-    Value: '3001'
+  PaymentServicePort:
+    Description: Port of the Payment Service
+    Value: '3005'
     Export:
-      Name: !Sub '${Environment}-UserServicePort'
+      Name: !Sub '${Environment}-PaymentServicePort'
 
-  UserServiceSecurityGroupId:
-    Description: Security Group ID for User Service
-    Value: !Ref UserServiceSecurityGroup
+  PaymentServiceSecurityGroupId:
+    Description: Security Group ID for Payment Service
+    Value: !Ref PaymentServiceSecurityGroup
     Export:
-      Name: !Sub '${Environment}-UserServiceSecurityGroupId'
+      Name: !Sub '${Environment}-PaymentServiceSecurityGroupId'
