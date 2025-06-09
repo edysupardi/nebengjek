@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ElastiCache Redis for NebengJek'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+  VpcId:
+    Type: String
+    Description: VPC ID where Redis will be deployed
+
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet for Redis
+
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet for Redis
+
+  RedisNodeType:
+    Type: String
+    Default: cache.t3.micro
+    Description: Redis node type
+    AllowedValues:
+      - cache.t3.micro
+      - cache.t3.small
+      - cache.t3.medium
+      - cache.r6g.large
+
+Resources:
+  # Security Group for Redis
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ElastiCache Redis
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: 10.0.0.0/16
+          Description: Redis access from VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-redis-sg'
+
+  # Redis Subnet Group
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for Redis
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  # Redis Parameter Group (for configuration)
+  RedisParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis7.x
+      Description: !Sub '${Environment} Redis parameter group'
+      Properties:
+        maxmemory-policy: allkeys-lru
+        timeout: 300
+
+  # ElastiCache Redis Cluster
+  RedisCluster:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub '${Environment}-nebengjek-redis'
+      Description: !Sub '${Environment} Redis cluster for NebengJek'
+
+      # Redis Configuration
+      Engine: redis
+      EngineVersion: 7.0
+      CacheNodeType: !Ref RedisNodeType
+      Port: 6379
+
+      # Replication Configuration
+      NumCacheClusters: 2 # 1 primary + 1 replica
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
+
+      # Network Configuration
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      SecurityGroupIds:
+        - !Ref RedisSecurityGroup
+
+      # Parameter Group
+      CacheParameterGroupName: !Ref RedisParameterGroup
+
+      # Backup Configuration
+      SnapshotRetentionLimit: 1
+      SnapshotWindow: '03:00-05:00'
+      PreferredMaintenanceWindow: 'sun:05:00-sun:07:00'
+
+      # Security
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: false # Disable for simplicity (enable in prod)
+
+      # Logging
+      LogDeliveryConfigurations:
+        - DestinationType: cloudwatch-logs
+          DestinationDetails:
+            LogGroup: !Ref RedisLogGroup
+          LogFormat: text
+          LogType: slow-log
+
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nebengjek-redis'
+
+  # CloudWatch Log Group for Redis
+  RedisLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/elasticache/${Environment}/nebengjek-redis'
+      RetentionInDays: 7
+
+Outputs:
+  RedisEndpoint:
+    Description: Redis primary endpoint
+    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub '${Environment}-RedisEndpoint'
+
+  RedisPort:
+    Description: Redis port
+    Value: !GetAtt RedisCluster.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub '${Environment}-RedisPort'
+
+  RedisClusterName:
+    Description: Redis cluster name
+    Value: !Ref RedisCluster
+    Export:
+      Name: !Sub '${Environment}-RedisCluster'

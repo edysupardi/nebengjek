@@ -1,24 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek User Service - Simplified'
+Description: 'NebengJek User Service - Updated for External Database'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
     AllowedValues: [dev, staging, prod]
-    Description: The deployment environment
 
   VpcId:
     Type: String
-    Description: VPC where the resources will be deployed
+    Description: VPC ID where services will be deployed
 
   PrivateSubnet1:
     Type: String
-    Description: First private subnet
+    Description: First private subnet for ECS tasks
 
   PrivateSubnet2:
     Type: String
-    Description: Second private subnet
+    Description: Second private subnet for ECS tasks
 
   ECSClusterName:
     Type: String
@@ -26,35 +25,45 @@ Parameters:
 
   ECRRepository:
     Type: String
-    Description: ECR repository name for User Service
     Default: user-service
+    Description: ECR repository name for user service
 
+  # External Database Parameters (from nebengjek-db deployment)
   DatabaseEndpoint:
     Type: String
-    Description: Database endpoint
+    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
+    Description: RDS PostgreSQL endpoint
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
 
   DatabaseName:
     Type: String
+    Default: nebengjek_prod
     Description: Database name
-    Default: nebengjek
 
   DatabaseUsername:
     Type: String
+    Default: nebengjek
     Description: Database username
 
   DatabasePassword:
     Type: String
-    Description: Database password
     NoEcho: true
+    Description: Database password (store in secrets manager)
 
+  # Optional Redis Parameters
   RedisHost:
     Type: String
-    Description: Redis host
+    Default: 'redis.nebengjek.local'
+    Description: Redis host (external or ElastiCache)
 
   RedisPort:
     Type: String
-    Description: Redis port
     Default: '6379'
+    Description: Redis port
 
 Resources:
   # Security Group for User Service
@@ -67,8 +76,13 @@ Resources:
         - IpProtocol: tcp
           FromPort: 3001
           ToPort: 3001
-          CidrIp: 10.0.0.0/16 # Allow from VPC
-          Description: User Service port
+          CidrIp: 10.0.0.0/16
+          Description: HTTP access from VPC
+        - IpProtocol: tcp
+          FromPort: 8008
+          ToPort: 8008
+          CidrIp: 10.0.0.0/16
+          Description: TCP microservice access
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -76,137 +90,8 @@ Resources:
         - Key: Name
           Value: !Sub '${Environment}-user-service-sg'
 
-  # User Service load balancer (internal)
-  UserServiceALB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Scheme: internal
-      SecurityGroups:
-        - !Ref UserServiceSecurityGroup
-      Subnets:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      Type: application
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-user-service-alb'
-
-  # User Service target group
-  UserServiceTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckEnabled: true
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /health
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Port: 3001
-      Protocol: HTTP
-      TargetType: ip
-      VpcId: !Ref VpcId
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-user-service-tg'
-
-  # User Service HTTP Listener
-  UserServiceALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref UserServiceTargetGroup
-      LoadBalancerArn: !Ref UserServiceALB
-      Port: 3001
-      Protocol: HTTP
-
-  # User Service Task Definition
-  UserServiceTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub '${Environment}-user-service'
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: '256'
-      Memory: '512'
-      ExecutionRoleArn: !GetAtt UserServiceExecutionRole.Arn
-      TaskRoleArn: !GetAtt UserServiceTaskRole.Arn
-      ContainerDefinitions:
-        - Name: user-service
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
-          Essential: true
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref UserServiceLogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: user-service
-          PortMappings:
-            - ContainerPort: 3001
-          Environment:
-            - Name: NODE_ENV
-              Value: !Ref Environment
-            - Name: DATABASE_URL
-              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:5432/${DatabaseName}?schema=public'
-            - Name: REDIS_HOST
-              Value: !Ref RedisHost
-            - Name: REDIS_PORT
-              Value: !Ref RedisPort
-            - Name: JWT_ACCESS_SECRET
-              Value: nebengjek_jwt_access_secret_2025 # For assessment
-            - Name: JWT_REFRESH_SECRET
-              Value: nebengjek_jwt_refresh_secret_2025 # For assessment
-            - Name: JWT_ACCESS_EXPIRES_IN
-              Value: '15m'
-            - Name: JWT_REFRESH_EXPIRES_IN
-              Value: '7d'
-            - Name: USER_SERVICE_PORT
-              Value: '3001'
-          HealthCheck:
-            Command: ['CMD-SHELL', 'curl -f http://localhost:3001/health || exit 1']
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
-
-  # User Service Service
-  UserServiceService:
-    Type: AWS::ECS::Service
-    DependsOn: UserServiceALBListener
-    Properties:
-      ServiceName: !Sub '${Environment}-user-service'
-      Cluster: !Ref ECSClusterName
-      TaskDefinition: !Ref UserServiceTaskDefinition
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 50
-      DesiredCount: 1 # Start with 1 for assessment
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          SecurityGroups:
-            - !Ref UserServiceSecurityGroup
-          Subnets:
-            - !Ref PrivateSubnet1
-            - !Ref PrivateSubnet2
-      LoadBalancers:
-        - ContainerName: user-service
-          ContainerPort: 3001
-          TargetGroupArn: !Ref UserServiceTargetGroup
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-user-service-service'
-
-  # CloudWatch Logs Group
-  UserServiceLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/ecs/${Environment}/user-service'
-      RetentionInDays: 30
-
-  # IAM Roles
-  UserServiceExecutionRole:
+  # IAM Role for ECS Task
+  UserServiceTaskRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -218,39 +103,137 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: UserServicePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              # Add additional permissions as needed
 
-  UserServiceTaskRole:
-    Type: AWS::IAM::Role
+  # ECS Task Definition
+  UserServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
     Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
+      Family: !Sub '${Environment}-user-service'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn: !Ref UserServiceTaskRole
+      TaskRoleArn: !Ref UserServiceTaskRole
+      ContainerDefinitions:
+        - Name: user-service
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          PortMappings:
+            - ContainerPort: 3001
+              Protocol: tcp
+            - ContainerPort: 8008
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: USER_PORT
+              Value: '3001'
+            - Name: USER_TCP_PORT
+              Value: '8008'
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
+            - Name: REDIS_HOST
+              Value: !Ref RedisHost
+            - Name: REDIS_PORT
+              Value: !Ref RedisPort
+            - Name: JWT_ACCESS_SECRET
+              Value: 'secure_jwt_access_secret_change_in_production'
+            - Name: JWT_REFRESH_SECRET
+              Value: 'secure_jwt_refresh_secret_change_in_production'
+            - Name: GATEWAY_SECRET_KEY
+              Value: 'secure_gateway_secret_change_in_production'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref UserServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: user-service
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:3001/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+  # CloudWatch Log Group
+  UserServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}/user-service'
+      RetentionInDays: 30
+
+  # ECS Service
+  UserService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub '${Environment}-user-service'
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref UserServiceTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref UserServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+          AssignPublicIp: DISABLED
+      HealthCheckGracePeriodSeconds: 60
+      EnableExecuteCommand: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-user-service'
+
+  # Service Discovery (Optional)
+  UserServiceDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: user-service
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 10
+        NamespaceId: !Ref ServiceDiscoveryNamespace
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: !Sub '${Environment}.nebengjek.local'
+      Vpc: !Ref VpcId
 
 Outputs:
-  ServiceUrl:
-    Description: URL of the User Service
-    Value: !Sub 'http://${UserServiceALB.DNSName}:3001'
+  UserServiceName:
+    Description: Name of the User Service
+    Value: !Ref UserService
     Export:
-      Name: !Sub '${Environment}-UserServiceUrl'
+      Name: !Sub '${Environment}-UserService'
 
-  UserServiceHost:
-    Description: Host of the User Service
-    Value: !GetAtt UserServiceALB.DNSName
-    Export:
-      Name: !Sub '${Environment}-UserServiceHost'
-
-  UserServicePort:
-    Description: Port of the User Service
-    Value: '3001'
-    Export:
-      Name: !Sub '${Environment}-UserServicePort'
-
-  UserServiceSecurityGroupId:
-    Description: Security Group ID for User Service
+  UserServiceSecurityGroup:
+    Description: Security Group of User Service
     Value: !Ref UserServiceSecurityGroup
     Export:
-      Name: !Sub '${Environment}-UserServiceSecurityGroupId'
+      Name: !Sub '${Environment}-UserServiceSecurityGroup'
+
+  ServiceDiscoveryNamespace:
+    Description: Service Discovery Namespace
+    Value: !Ref ServiceDiscoveryNamespace
+    Export:
+      Name: !Sub '${Environment}-ServiceDiscoveryNamespace'

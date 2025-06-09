@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek Payment Service'
+Description: 'NebengJek Payment Service - Updated for External Database'
 
 Parameters:
   Environment:
@@ -29,23 +29,42 @@ Parameters:
     Description: ECR repository name for Payment Service
     Default: payment-service
 
+  # External Database Parameters (from nebengjek-db deployment)
   DatabaseEndpoint:
     Type: String
-    Description: Database endpoint
+    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
+    Description: RDS PostgreSQL endpoint
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
 
   DatabaseName:
     Type: String
+    Default: nebengjek_prod
     Description: Database name
-    Default: nebengjek
 
   DatabaseUsername:
     Type: String
+    Default: nebengjek
     Description: Database username
 
   DatabasePassword:
     Type: String
-    Description: Database password
     NoEcho: true
+    Description: Database password (store in secrets manager)
+
+  # Optional Redis Parameters (for payment session caching)
+  RedisHost:
+    Type: String
+    Default: 'redis.nebengjek.local'
+    Description: Redis host (external or ElastiCache)
+
+  RedisPort:
+    Type: String
+    Default: '6379'
+    Description: Redis port
 
 Resources:
   # Security Group for Payment Service
@@ -110,6 +129,31 @@ Resources:
       Port: 3005
       Protocol: HTTP
 
+  # IAM Roles
+  PaymentServiceExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  PaymentServiceTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
   # Payment Service Task Definition
   PaymentServiceTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -136,11 +180,15 @@ Resources:
             - ContainerPort: 3005
           Environment:
             - Name: NODE_ENV
-              Value: !Ref Environment
-            - Name: DATABASE_URL
-              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:5432/${DatabaseName}?schema=public'
+              Value: production
             - Name: PAYMENT_SERVICE_PORT
               Value: '3005'
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
+            - Name: REDIS_HOST
+              Value: !Ref RedisHost
+            - Name: REDIS_PORT
+              Value: !Ref RedisPort
           HealthCheck:
             Command: ['CMD-SHELL', 'curl -f http://localhost:3005/health || exit 1']
             Interval: 30
@@ -183,31 +231,6 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${Environment}/payment-service'
       RetentionInDays: 30
-
-  # IAM Roles
-  PaymentServiceExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  PaymentServiceTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
 
 Outputs:
   ServiceUrl:

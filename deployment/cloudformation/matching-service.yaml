@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek Matching Service'
+Description: 'NebengJek Matching Service - Updated Redis Configuration'
 
 Parameters:
   Environment:
@@ -29,14 +29,15 @@ Parameters:
     Description: ECR repository name for Matching Service
     Default: matching-service
 
+  # Redis Parameters (primary dependency for matching algorithm)
   RedisHost:
     Type: String
-    Description: Redis host
+    Description: Redis host (from ElastiCache)
 
   RedisPort:
     Type: String
-    Description: Redis port
     Default: '6379'
+    Description: Redis port
 
 Resources:
   # Security Group for Matching Service
@@ -101,6 +102,31 @@ Resources:
       Port: 3003
       Protocol: HTTP
 
+  # IAM Roles
+  MatchingServiceExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  MatchingServiceTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
   # Matching Service Task Definition
   MatchingServiceTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -127,13 +153,13 @@ Resources:
             - ContainerPort: 3003
           Environment:
             - Name: NODE_ENV
-              Value: !Ref Environment
+              Value: production
+            - Name: MATCHING_SERVICE_PORT
+              Value: '3003'
             - Name: REDIS_HOST
               Value: !Ref RedisHost
             - Name: REDIS_PORT
               Value: !Ref RedisPort
-            - Name: MATCHING_SERVICE_PORT
-              Value: '3003'
           HealthCheck:
             Command: ['CMD-SHELL', 'curl -f http://localhost:3003/health || exit 1']
             Interval: 30
@@ -176,31 +202,6 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${Environment}/matching-service'
       RetentionInDays: 30
-
-  # IAM Roles
-  MatchingServiceExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  MatchingServiceTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
 
 Outputs:
   ServiceUrl:

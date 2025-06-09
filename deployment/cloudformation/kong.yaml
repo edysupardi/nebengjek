@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Kong Gateway for NebengJek Microservices'
+Description: 'Kong Gateway for NebengJek Microservices - Updated for External Database'
 
 Parameters:
   Environment:
@@ -32,18 +32,32 @@ Parameters:
     Type: String
     Description: Name of the ECS cluster
 
+  # External Database Parameters (from nebengjek-db deployment)
   DatabaseEndpoint:
     Type: String
-    Description: PostgreSQL database endpoint for Kong
+    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
+    Description: RDS PostgreSQL endpoint
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
 
   DatabaseUsername:
     Type: String
+    Default: nebengjek
     Description: Database username
 
   DatabasePassword:
     Type: String
-    Description: Database password
     NoEcho: true
+    Description: Database password (store in secrets manager)
+
+  # Kong-specific database name (separate schema)
+  KongDatabaseName:
+    Type: String
+    Default: kong
+    Description: Kong database name (separate from main app database)
 
 Resources:
   # Security Group for Kong Gateway
@@ -155,6 +169,31 @@ Resources:
       ListenerArn: !Ref KongProxyListener
       Priority: 100
 
+  # IAM Roles
+  KongExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  KongTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
   # Kong Task Definition
   KongTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -188,13 +227,13 @@ Resources:
             - Name: KONG_PG_HOST
               Value: !Ref DatabaseEndpoint
             - Name: KONG_PG_PORT
-              Value: '5432'
+              Value: !Ref DatabasePort
             - Name: KONG_PG_USER
               Value: !Ref DatabaseUsername
             - Name: KONG_PG_PASSWORD
               Value: !Ref DatabasePassword
             - Name: KONG_PG_DATABASE
-              Value: kong
+              Value: !Ref KongDatabaseName
             - Name: KONG_PROXY_ACCESS_LOG
               Value: /dev/stdout
             - Name: KONG_ADMIN_ACCESS_LOG
@@ -230,13 +269,13 @@ Resources:
             - Name: KONG_PG_HOST
               Value: !Ref DatabaseEndpoint
             - Name: KONG_PG_PORT
-              Value: '5432'
+              Value: !Ref DatabasePort
             - Name: KONG_PG_USER
               Value: !Ref DatabaseUsername
             - Name: KONG_PG_PASSWORD
               Value: !Ref DatabasePassword
             - Name: KONG_PG_DATABASE
-              Value: kong
+              Value: !Ref KongDatabaseName
           Command: ['sh', '-c', 'kong migrations bootstrap && kong migrations up']
 
   # Kong ECS Service
@@ -277,31 +316,6 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${Environment}/kong'
       RetentionInDays: 30
-
-  # IAM Roles
-  KongExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  KongTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
 
 Outputs:
   KongProxyUrl:

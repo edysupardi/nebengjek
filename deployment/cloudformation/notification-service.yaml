@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NebengJek Notification Service'
+Description: 'NebengJek Notification Service - Updated for External Database'
 
 Parameters:
   Environment:
@@ -29,32 +29,41 @@ Parameters:
     Description: ECR repository name for Notification Service
     Default: notification-service
 
+  # External Database Parameters (from nebengjek-db deployment)
   DatabaseEndpoint:
     Type: String
-    Description: Database endpoint
+    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
+    Description: RDS PostgreSQL endpoint
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
 
   DatabaseName:
     Type: String
+    Default: nebengjek_prod
     Description: Database name
-    Default: nebengjek
 
   DatabaseUsername:
     Type: String
+    Default: nebengjek
     Description: Database username
 
   DatabasePassword:
     Type: String
-    Description: Database password
     NoEcho: true
+    Description: Database password (store in secrets manager)
 
+  # Redis Parameters
   RedisHost:
     Type: String
-    Description: Redis host
+    Description: Redis host (from ElastiCache)
 
   RedisPort:
     Type: String
-    Description: Redis port
     Default: '6379'
+    Description: Redis port
 
 Resources:
   # Security Group for Notification Service
@@ -119,6 +128,31 @@ Resources:
       Port: 3004
       Protocol: HTTP
 
+  # IAM Roles
+  NotificationServiceExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  NotificationServiceTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
   # Notification Service Task Definition
   NotificationServiceTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -145,15 +179,15 @@ Resources:
             - ContainerPort: 3004
           Environment:
             - Name: NODE_ENV
-              Value: !Ref Environment
+              Value: production
+            - Name: NOTIFICATION_SERVICE_PORT
+              Value: '3004'
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:5432/${DatabaseName}?schema=public'
+              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
             - Name: REDIS_HOST
               Value: !Ref RedisHost
             - Name: REDIS_PORT
               Value: !Ref RedisPort
-            - Name: NOTIFICATION_SERVICE_PORT
-              Value: '3004'
           HealthCheck:
             Command: ['CMD-SHELL', 'curl -f http://localhost:3004/health || exit 1']
             Interval: 30
@@ -196,31 +230,6 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${Environment}/notification-service'
       RetentionInDays: 30
-
-  # IAM Roles
-  NotificationServiceExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  NotificationServiceTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
 
 Outputs:
   ServiceUrl:
