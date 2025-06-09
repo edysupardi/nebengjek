@@ -70,6 +70,18 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
         }),
         inject: [ConfigService],
       },
+      {
+        name: 'TRACKING_SERVICE',
+        imports: [ConfigModule],
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.TCP,
+          options: {
+            host: configService.get('TRACKING_SERVICE_HOST', 'tracking-service'),
+            port: configService.get('TRACKING_TCP_PORT', 8003), // TCP port for tracking
+          },
+        }),
+        inject: [ConfigService],
+      },
     ]),
   ],
   controllers: [BookingController],

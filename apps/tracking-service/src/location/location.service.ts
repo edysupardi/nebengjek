@@ -1,12 +1,14 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
 import { LocationRepository } from '@app/location/repositories/location.repository';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 @Injectable()
 export class LocationService {
   private readonly logger = new Logger(LocationService.name);
 
   constructor(
+    // eslint-disable-next-line no-unused-vars
     private readonly locationRepository: LocationRepository,
+    // eslint-disable-next-line no-unused-vars
     @Inject('REDIS_CLIENT') private readonly redis: any,
   ) {}
 
@@ -174,5 +176,43 @@ export class LocationService {
    */
   private toRad(deg: number): number {
     return deg * (Math.PI / 180);
+  }
+
+  async getDriverLocationHistory(driverId: string, hoursBack: number = 24) {
+    try {
+      const cutoffTime = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+
+      // Use existing locationRepository
+      const locations = await this.locationRepository.findMany({
+        where: {
+          userId: driverId,
+          timestamp: { gte: cutoffTime },
+        },
+        orderBy: { timestamp: 'desc' },
+        take: 100,
+      });
+
+      return locations;
+    } catch (error) {
+      this.logger.error('Error getting driver location history:', error);
+      throw error;
+    }
+  }
+
+  async getDriverCurrentLocation(driverId: string) {
+    try {
+      // Get most recent location
+      const location = await this.locationRepository.findFirst({
+        where: {
+          userId: driverId,
+        },
+        orderBy: { timestamp: 'desc' },
+      });
+
+      return location;
+    } catch (error) {
+      this.logger.error('Error getting driver current location:', error);
+      throw error;
+    }
   }
 }

@@ -1,99 +1,95 @@
-// eslint.config.js (ESLint v9.0+ format)
+// eslint.config.js
+import { fixupConfigRules } from '@eslint/compat';
+import { FlatCompat } from '@eslint/eslintrc';
 import js from '@eslint/js';
-import typescript from '@typescript-eslint/eslint-plugin';
-import typescriptParser from '@typescript-eslint/parser';
-import prettierConfig from 'eslint-config-prettier';
-import prettier from 'eslint-plugin-prettier';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+  recommendedConfig: js.configs.recommended,
+  allConfig: js.configs.all,
+});
 
 export default [
-  // Base recommended configurations
-  js.configs.recommended,
-
-  // Configuration for TypeScript files
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['**/dist/', '**/node_modules/', '**/.next/', '**/coverage/', '**/*.config.js'],
+  },
+  ...fixupConfigRules(
+    compat.extends('@nestjs/eslint-config', 'plugin:@typescript-eslint/recommended', 'plugin:prettier/recommended'),
+  ),
+  {
+    plugins: {
+      '@typescript-eslint': typescriptEslint,
+    },
     languageOptions: {
-      parser: typescriptParser,
+      parser: tsParser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
       parserOptions: {
         project: './tsconfig.json',
-        ecmaVersion: 'latest',
-        sourceType: 'module',
       },
-      globals: {
-        node: true,
-        jest: true,
-      },
-    },
-    plugins: {
-      '@typescript-eslint': typescript,
-      prettier: prettier,
     },
     rules: {
-      // TypeScript rules
+      // ✅ Fix for NestJS constructor parameters
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'none', // Ignore all function arguments (including constructor)
+          varsIgnorePattern: '^_', // Allow variables starting with _
+          argsIgnorePattern: '^_', // Allow arguments starting with _
+          ignoreRestSiblings: true, // Ignore rest siblings in destructuring
+          destructuredArrayIgnorePattern: '^_', // Allow destructured arrays starting with _
+        },
+      ],
+
+      // ✅ Other common NestJS-friendly rules
       '@typescript-eslint/interface-name-prefix': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-empty-function': ['warn', { allow: ['constructors'] }],
+      '@typescript-eslint/no-explicit-any': 'warn', // Changed from error to warn
+      '@typescript-eslint/no-unused-expressions': 'error',
+      '@typescript-eslint/prefer-as-const': 'error',
 
-      // General rules
-      'no-console': 'warn',
-      'no-debugger': 'error',
-      'no-duplicate-imports': 'error',
-      'no-unused-expressions': 'error',
+      // ✅ Code style rules
       'prefer-const': 'error',
       'no-var': 'error',
+      'object-shorthand': 'error',
+      'prefer-template': 'error',
 
-      // Code style
-      'max-len': ['warn', { code: 120 }],
-      quotes: ['error', 'single'],
-      semi: ['error', 'always'],
-      'comma-dangle': ['error', 'always-multiline'],
+      // ✅ Allow console.log in development (adjust as needed)
+      'no-console': 'warn',
 
-      // Prettier integration
-      'prettier/prettier': 'error',
+      // ✅ Async/await best practices
+      'require-await': 'error',
+      'no-return-await': 'error',
     },
   },
 
-  // Configuration for JavaScript files
+  // ✅ Specific overrides for different file types
   {
-    files: ['**/*.js', '**/*.mjs'],
-    languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      globals: {
-        node: true,
-      },
-    },
-    plugins: {
-      prettier: prettier,
-    },
+    files: ['**/*.spec.ts', '**/*.test.ts'],
     rules: {
-      'no-console': 'warn',
-      'prefer-const': 'error',
-      'no-var': 'error',
-      'prettier/prettier': 'error',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
 
-  // Ignore patterns (replaces .eslintignore)
   {
-    ignores: [
-      'node_modules/**',
-      'dist/**',
-      'build/**',
-      'coverage/**',
-      '*.log',
-      '.DS_Store',
-      '.vscode/**',
-      '.husky/**',
-      '*.config.js',
-      'jest.config.js',
-      'webpack.config.js',
-    ],
+    files: ['**/*.controller.ts', '**/*.service.ts', '**/*.module.ts'],
+    rules: {
+      // These files commonly use constructor injection
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'none', // Completely ignore constructor arguments
+          varsIgnorePattern: '^_',
+        },
+      ],
+    },
   },
-
-  // Apply prettier config to override conflicting rules
-  prettierConfig,
 ];

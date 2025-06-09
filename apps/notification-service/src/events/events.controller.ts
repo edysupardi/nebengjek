@@ -1,98 +1,18 @@
 // src/events/events.controller.ts
+import { BookingNotificationDto } from '@app/notification/dto/booking-notification.dto';
+import { CustomerNotificationDto } from '@app/notification/dto/customer-notification.dto';
+import { DriverNotificationDto } from '@app/notification/dto/driver-notification.dto';
+import { TripNotificationDto } from '@app/notification/dto/trip-notification.dto';
+import { NotificationService } from '@app/notification/notification.service';
 import { Controller, Logger } from '@nestjs/common';
-import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
-import { NotificationService } from '../notification.service';
-import { BookingNotificationDto } from '../dto/booking-notification.dto';
-import { TripNotificationDto } from '../dto/trip-notification.dto';
-import { CustomerNotificationDto } from '../dto/customer-notification.dto';
-import { DriverNotificationDto } from '../dto/driver-notification.dto';
-import { MessagingService } from '@app/messaging';
-import { BookingEvents, TripEvents, PaymentEvents } from '@app/messaging/events/event-types';
+import { MessagePattern, Payload } from '@nestjs/microservices';
 
 @Controller('events')
 export class EventsController {
   private readonly logger = new Logger(EventsController.name);
 
-  constructor(
-    private readonly notificationService: NotificationService,
-    private readonly messagingService: MessagingService,
-  ) {}
+  constructor(private readonly notificationService: NotificationService) {}
 
-  // Legacy event patterns for backward compatibility
-  @EventPattern('booking.new')
-  async handleNewBooking(@Payload() data: any) {
-    this.logger.log(`Received legacy booking.new event: ${JSON.stringify(data)}`);
-    // Forward to the new messaging system
-    await this.messagingService.publish(BookingEvents.CREATED, {
-      bookingId: data.bookingId,
-      customerId: data.customerId,
-      latitude: data.latitude || data.pickupLatitude,
-      longitude: data.longitude || data.pickupLongitude,
-      destinationLatitude: data.destinationLatitude,
-      destinationLongitude: data.destinationLongitude,
-      customerName: data.customerName,
-    });
-  }
-
-  @EventPattern('booking.accepted')
-  async handleBookingAccepted(@Payload() data: any) {
-    this.logger.log(`Received legacy booking.accepted event: ${JSON.stringify(data)}`);
-    // Forward to the new messaging system
-    await this.messagingService.publish(BookingEvents.ACCEPTED, {
-      bookingId: data.bookingId,
-      customerId: data.customerId,
-      driverId: data.driverId,
-      driverName: data.driverName,
-      driverLatitude: data.driverLatitude,
-      driverLongitude: data.driverLongitude,
-      estimatedArrivalTime: data.estimatedArrivalTime,
-    });
-  }
-
-  @EventPattern('booking.cancelled')
-  async handleBookingCancelled(@Payload() data: any) {
-    this.logger.log(`Received legacy booking.cancelled event: ${JSON.stringify(data)}`);
-    // Forward to the new messaging system
-    await this.messagingService.publish(BookingEvents.CANCELLED, {
-      bookingId: data.bookingId,
-      customerId: data.customerId,
-      driverId: data.driverId,
-      cancelledBy: data.cancelledBy || 'system',
-    });
-  }
-
-  @EventPattern('trip.started')
-  async handleTripStarted(@Payload() data: any) {
-    this.logger.log(`Received legacy trip.started event: ${JSON.stringify(data)}`);
-    // Forward to the new messaging system
-    await this.messagingService.publish(TripEvents.STARTED, {
-      tripId: data.tripId || `trip-${data.bookingId}`, // Generate temp ID if not provided
-      bookingId: data.bookingId,
-      driverId: data.driverId,
-      customerId: data.customerId,
-      pickupLocation: {
-        latitude: data.pickupLocation?.latitude || 0,
-        longitude: data.pickupLocation?.longitude || 0,
-      },
-    });
-  }
-
-  @EventPattern('payment.completed')
-  async handlePaymentCompleted(@Payload() data: any) {
-    this.logger.log(`Received legacy payment.completed event: ${JSON.stringify(data)}`);
-    // Forward to the new messaging system
-    await this.messagingService.publish(PaymentEvents.COMPLETED, {
-      tripId: data.tripId,
-      bookingId: data.bookingId || '',
-      customerId: data.customerId,
-      driverId: data.driverId,
-      amount: data.amount,
-      driverAmount: data.driverAmount,
-      platformFee: data.amount - data.driverAmount,
-    });
-  }
-
-  // Direct API methods for notification
   @MessagePattern('notify.booking')
   async notifyBookingEvent(@Payload() data: BookingNotificationDto) {
     this.logger.log(`Processing notify.booking message: ${JSON.stringify(data)}`);
@@ -115,5 +35,51 @@ export class EventsController {
   async notifyTripEvent(@Payload() data: TripNotificationDto) {
     this.logger.log(`Processing notify.trip message: ${JSON.stringify(data)}`);
     return this.notificationService.notifyTripEvent(data);
+  }
+
+  @MessagePattern('send.notification')
+  async sendNotification(
+    @Payload() data: { userId: string; type: 'push' | 'sms' | 'email'; title: string; message: string; data?: any },
+  ) {
+    try {
+      this.logger.log(`Sending ${data.type} notification to user ${data.userId}: ${data.title}`);
+      return await this.notificationService.createNotification({
+        userId: data.userId,
+        title: data.title,
+        message: data.message,
+        type: data.data?.type || 'general',
+        relatedId: data.data?.bookingId || data.data?.tripId,
+        data: data.data,
+      });
+    } catch (error) {
+      this.logger.error('Error sending notification:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
+      };
+    }
+  }
+
+  @MessagePattern('get.notifications')
+  async getNotifications(@Payload() data: { userId: string; page?: number; limit?: number }) {
+    try {
+      this.logger.log(`Getting notifications for user ${data.userId}`);
+      const notifications = await this.notificationService.getUserNotifications(data.userId);
+      return {
+        success: true,
+        data: notifications,
+        pagination: {
+          page: data.page || 1,
+          limit: data.limit || 10,
+          total: Array.isArray(notifications) ? notifications.length : 0,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error getting notifications:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
+      };
+    }
   }
 }

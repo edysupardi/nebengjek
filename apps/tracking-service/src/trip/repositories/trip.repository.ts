@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@app/database';
 import { Trip } from '@app/common/entities';
-import { Trip as PrismaTrip, Prisma } from '@prisma/client';
+import { PrismaService } from '@app/database';
+import { Injectable } from '@nestjs/common';
+import { Prisma, Trip as PrismaTrip } from '@prisma/client';
 
 @Injectable()
 export class TripRepository {
+  // eslint-disable-next-line no-unused-vars
   constructor(private readonly prisma: PrismaService) {}
 
   private transformTripToDomain(
@@ -154,5 +155,13 @@ export class TripRepository {
     });
 
     return prismaTrips.map(trip => this.transformTripToDomain(trip));
+  }
+
+  async aggregate(args: Prisma.TripAggregateArgs) {
+    return this.prisma.trip.aggregate(args);
+  }
+
+  async findFirst(params: { where: any; include?: any }) {
+    return this.prisma.trip.findFirst(params);
   }
 }
