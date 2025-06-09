@@ -1,11 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'ElastiCache Redis for NebengJek'
+Description: 'ElastiCache Redis for NebengJek - Fixed Version'
 
 Parameters:
   Environment:
     Type: String
-    Default: prod
+    Default: dev
     AllowedValues: [dev, staging, prod]
+    Description: The deployment environment
 
   VpcId:
     Type: String
@@ -62,11 +63,18 @@ Resources:
   RedisParameterGroup:
     Type: AWS::ElastiCache::ParameterGroup
     Properties:
-      CacheParameterGroupFamily: redis7
+      CacheParameterGroupFamily: redis7.x
       Description: !Sub '${Environment} Redis parameter group'
       Properties:
         maxmemory-policy: allkeys-lru
         timeout: 300
+
+  # CloudWatch Log Group for Redis
+  RedisLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/elasticache/${Environment}/nebengjek-redis'
+      RetentionInDays: 7
 
   # ElastiCache Redis Cluster
   RedisCluster:
@@ -101,26 +109,19 @@ Resources:
 
       # Security
       AtRestEncryptionEnabled: true
-      TransitEncryptionEnabled: false # Disable for simplicity (enable in prod)
+      TransitEncryptionEnabled: false # Disable for simplicity
 
-      # Logging
-      LogDeliveryConfigurations:
-        - DestinationType: cloudwatch-logs
-          DestinationDetails:
-            LogGroup: !Ref RedisLogGroup
-          LogFormat: text
-          LogType: slow-log
+      # Simplified Logging (remove problematic LogDeliveryConfigurations)
+      # LogDeliveryConfigurations:
+      #   - DestinationType: cloudwatch-logs
+      #     DestinationDetails:
+      #       LogGroup: !Ref RedisLogGroup
+      #     LogFormat: text
+      #     LogType: slow-log
 
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-nebengjek-redis'
-
-  # CloudWatch Log Group for Redis
-  RedisLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/elasticache/${Environment}/nebengjek-redis'
-      RetentionInDays: 7
 
 Outputs:
   RedisEndpoint:
@@ -135,8 +136,20 @@ Outputs:
     Export:
       Name: !Sub '${Environment}-RedisPort'
 
+  RedisHost:
+    Description: Redis host (for services that need host only)
+    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub '${Environment}-RedisHost'
+
   RedisClusterName:
     Description: Redis cluster name
     Value: !Ref RedisCluster
     Export:
       Name: !Sub '${Environment}-RedisCluster'
+
+  RedisSecurityGroupId:
+    Description: Security Group ID for Redis
+    Value: !Ref RedisSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-RedisSecurityGroupId'
