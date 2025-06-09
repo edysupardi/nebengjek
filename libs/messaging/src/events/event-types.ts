@@ -10,6 +10,7 @@ export enum BookingEvents {
   DRIVER_SEARCH_REQUESTED = 'booking.driver_search_requested',
   NEARBY_DRIVERS_FOUND = 'booking.nearby_drivers_found',
   DRIVERS_READY = 'booking.drivers_ready',
+  SMART_CANCEL_REQUESTED = 'booking.smart_cancel_requested',
 }
 
 export enum TripEvents {
@@ -102,7 +103,7 @@ export interface EventPayloadMap {
     destinationLatitude: number;
     destinationLongitude: number;
     customerName?: string;
-    // **NEW: Additional properties for UI support**
+    // Additional properties for UI support**
     pickupLocation?: {
       latitude: number;
       longitude: number;
@@ -136,7 +137,7 @@ export interface EventPayloadMap {
     driverLatitude?: number;
     driverLongitude?: number;
     estimatedArrivalTime?: number;
-    // **NEW: Additional driver details for customer**
+    // Additional driver details for customer**
     driverPhone?: string;
     vehicleInfo?: {
       type?: string; // e.g., motorcycle, car, etc.
@@ -169,13 +170,19 @@ export interface EventPayloadMap {
     };
   };
 
-  // **NEW: booking.taken event**
+  // booking.taken event**
   [BookingEvents.TAKEN]: {
     bookingId: string;
     driverId: string;
     customerId: string;
     message?: string;
     timestamp?: string;
+  };
+
+  [BookingEvents.SMART_CANCEL_REQUESTED]: {
+    bookingId: string;
+    customerId: string;
+    reason: 'no_drivers_found' | 'all_drivers_rejected' | 'timeout' | 'system';
   };
 
   // ... rest of the events remain unchanged ...
@@ -350,7 +357,7 @@ export interface EventPayloadMap {
   };
 }
 
-// **NEW: Type helpers for driver notification data**
+// Type helpers for driver notification data**
 export interface DriverNotificationData {
   bookingId: string;
   customerId: string;
@@ -378,7 +385,7 @@ export interface DriverNotificationData {
   destinationAddress: string;
 }
 
-// **NEW: Type helpers for customer notification data**
+// Type helpers for customer notification data**
 export interface CustomerNotificationData {
   bookingId: string;
   driverId: string;
