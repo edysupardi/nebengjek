@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: ./deployment/docker/user-service.dockerfile
     ports:
-      - "${USER_PORT:-3001}:${USER_PORT:-3001}"
+      - '${USER_PORT:-3001}:${USER_PORT:-3001}'
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -34,8 +34,8 @@ services:
       context: .
       dockerfile: ./deployment/docker/booking-service.dockerfile
     ports:
-      - "${BOOKING_PORT:-3002}:${BOOKING_PORT:-3002}"
-      - "${BOOKING_TCP_PORT:-8005}:${BOOKING_TCP_PORT:-8005}"
+      - '${BOOKING_PORT:-3002}:${BOOKING_PORT:-3002}'
+      - '${BOOKING_TCP_PORT:-8005}:${BOOKING_TCP_PORT:-8005}'
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -44,14 +44,16 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - BOOKING_PORT=${BOOKING_PORT:-3002}
       - BOOKING_TCP_PORT=${BOOKING_TCP_PORT:-8005}
-      - TRACKING_PORT=${TRACKING_PORT:-3003}
       - NOTIFICATION_SERVICE_HOST=${NOTIFICATION_SERVICE_HOST:-notification-service}
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
+      - TRACKING_SERVICE_HOST=${TRACKING_SERVICE_HOST:-tracking-service}
+      - TRACKING_PORT=${TRACKING_PORT:-3003}
       # TCP client connections
       - MATCHING_TCP_PORT=${MATCHING_TCP_PORT:-8006}
-      - NOTIFICATION_TCP_PORT=${MATCHING_TCP_PORT:-8004}
+      - NOTIFICATION_TCP_PORT=${NOTIFICATION_TCP_PORT:-8004}
+      - TRACKING_TCP_PORT=${TRACKING_TCP_PORT:-8004}
     volumes:
       - ./apps/booking-service:/app/apps/booking-service
       - ./libs:/app/libs
@@ -70,8 +72,8 @@ services:
       context: .
       dockerfile: ./deployment/docker/tracking-service.dockerfile
     ports:
-      - "${TRACKING_PORT:-3003}:${TRACKING_PORT:-3003}"
-      - "${TRACKING_WS_PORT:-3060}:${TRACKING_WS_PORT:-3060}"
+      - '${TRACKING_PORT:-3003}:${TRACKING_PORT:-3003}'
+      - '${TRACKING_WS_PORT:-3060}:${TRACKING_WS_PORT:-3060}'
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -98,9 +100,9 @@ services:
       context: .
       dockerfile: ./deployment/docker/notification-service.dockerfile
     ports:
-      - "${NOTIFICATION_PORT:-3004}:${NOTIFICATION_PORT:-3004}"
-      - "${NOTIFICATION_WS_PORT:-3050}:${NOTIFICATION_WS_PORT:-3050}"
-      - "${NOTIFICATION_TCP_PORT:-3050}:${NOTIFICATION_TCP_PORT:-3050}"
+      - '${NOTIFICATION_PORT:-3004}:${NOTIFICATION_PORT:-3004}'
+      - '${NOTIFICATION_WS_PORT:-3050}:${NOTIFICATION_WS_PORT:-3050}'
+      - '${NOTIFICATION_TCP_PORT:-3050}:${NOTIFICATION_TCP_PORT:-3050}'
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -110,6 +112,10 @@ services:
       - NOTIFICATION_PORT=${NOTIFICATION_PORT:-3004}
       - NOTIFICATION_WS_PORT=${NOTIFICATION_WS_PORT:-3050}
       - NOTIFICATION_TCP_PORT=8004
+      - USER_SERVICE_HOST=${USER_SERVICE_HOST:-user-service}
+      - USER_TCP_PORT=${USER_TCP_PORT:-8008}
+      - MATCHING_SERVICE_HOST=${MATCHING_SERVICE_HOST:-matching-service}
+      - MATCHING_TCP_PORT=${MATCHING_TCP_PORT:-8006}
     volumes:
       - ./apps/notification-service:/app/apps/notification-service
       - ./libs:/app/libs
@@ -124,8 +130,8 @@ services:
       context: .
       dockerfile: ./deployment/docker/payment-service.dockerfile
     ports:
-      - "${PAYMENT_PORT:-3005}:${PAYMENT_PORT:-3005}"
-      - "${PAYMENT_TCP_PORT:-8007}:${PAYMENT_TCP_PORT:-8007}"
+      - '${PAYMENT_PORT:-3005}:${PAYMENT_PORT:-3005}'
+      - '${PAYMENT_TCP_PORT:-8007}:${PAYMENT_TCP_PORT:-8007}'
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -148,8 +154,8 @@ services:
       context: .
       dockerfile: ./deployment/docker/matching-service.dockerfile
     ports:
-      - "${MATCHING_PORT:-3006}:${MATCHING_PORT:-3006}"
-      - "${MATCHING_TCP_PORT:-8006}:${MATCHING_TCP_PORT:-8006}"
+      - '${MATCHING_PORT:-3006}:${MATCHING_PORT:-3006}'
+      - '${MATCHING_TCP_PORT:-8006}:${MATCHING_TCP_PORT:-8006}'
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - DATABASE_URL=${DATABASE_URL}
@@ -158,6 +164,12 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - MATCHING_PORT=${MATCHING_PORT:-3006}
       - MATCHING_TCP_PORT=8006
+      - BOOKING_SERVICE_HOST=${BOOKING_SERVICE_HOST:-booking-service}
+      - BOOKING_TCP_PORT=${BOOKING_TCP_PORT:-8005}
+      - USER_SERVICE_HOST=${USER_SERVICE_HOST:-user-service}
+      - USER_TCP_PORT=${USER_TCP_PORT:-8008}
+      - TRACKING_SERVICE_HOST=${TRACKING_SERVICE_HOST:-tracking-service}
+      - TRACKING_TCP_PORT=${TRACKING_TCP_PORT:-8009}
     volumes:
       - ./apps/matching-service:/app/apps/matching-service
       - ./libs:/app/libs
@@ -197,7 +209,6 @@ networks:
     ipam:
       config:
         - subnet: ${DOCKER_SUBNET:-172.20.0.0/16}
-
 # volumes:
 #   postgres-data:
 #     driver: local

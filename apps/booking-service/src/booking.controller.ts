@@ -121,4 +121,119 @@ export class BookingController {
       this.logger.error(`[TCP CONTROLLER] Error: ${errorMessage}`, error);
     }
   }
+
+  @MessagePattern('checkDriversAvailability')
+  async checkDriversAvailability(data: { driverIds: string[] }) {
+    try {
+      this.logger.log(`[TCP] Checking availability for ${data.driverIds.length} drivers`);
+
+      const availability = await this.bookingService.checkMultipleDriversAvailability(data.driverIds);
+
+      return {
+        success: true,
+        data: availability,
+      };
+    } catch (error) {
+      this.logger.error('[TCP] Error checking drivers availability:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
+        data: [],
+      };
+    }
+  }
+
+  @MessagePattern('getCustomerBookingHistory')
+  async getCustomerBookingHistory(data: { customerId: string; daysBack: number; limit?: number }) {
+    try {
+      this.logger.log(`[TCP] Getting booking history for customer ${data.customerId}`);
+
+      const history = await this.bookingService.getCustomerBookingHistory(
+        data.customerId,
+        data.daysBack,
+        data.limit || 50,
+      );
+
+      return {
+        success: true,
+        data: history,
+      };
+    } catch (error) {
+      this.logger.error('[TCP] Error getting customer booking history:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
+        data: [],
+      };
+    }
+  }
+
+  @MessagePattern('getCustomerCancelledBookings')
+  async getCustomerCancelledBookings(data: { customerId: string; daysBack: number }) {
+    try {
+      this.logger.log(`[TCP] Getting cancelled bookings for customer ${data.customerId}`);
+
+      const cancelledBookings = await this.bookingService.getCustomerCancelledBookings(data.customerId, data.daysBack);
+
+      return {
+        success: true,
+        data: cancelledBookings,
+      };
+    } catch (error) {
+      this.logger.error('[TCP] Error getting cancelled bookings:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
+        data: [],
+      };
+    }
+  }
+
+  @MessagePattern('getActiveBookingStats')
+  async getActiveBookingStats() {
+    try {
+      this.logger.log('[TCP] Getting active booking statistics');
+
+      const stats = await this.bookingService.getActiveBookingStatistics();
+
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      this.logger.error('[TCP] Error getting booking stats:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
+        data: {},
+      };
+    }
+  }
+
+  @MessagePattern('checkDriverActiveBooking')
+  async checkDriverActiveBooking(data: { driverId: string }) {
+    try {
+      this.logger.log(`[TCP] Checking active booking for driver ${data.driverId}`);
+
+      const hasActive = await this.bookingService.hasActiveBooking(data.driverId);
+
+      return {
+        success: true,
+        data: {
+          driverId: data.driverId,
+          hasActiveBooking: hasActive,
+        },
+      };
+    } catch (error) {
+      this.logger.error('[TCP] Error checking driver active booking:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
+        data: {
+          driverId: data.driverId,
+          hasActiveBooking: true, // Fail safe
+        },
+      };
+    }
+  }
 }

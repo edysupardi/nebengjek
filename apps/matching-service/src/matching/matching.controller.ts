@@ -8,6 +8,7 @@ import { MatchingService } from './matching.service';
 @Controller('matching')
 export class MatchingController {
   private readonly logger = new Logger(MatchingController.name);
+  // eslint-disable-next-line no-unused-vars
   constructor(private readonly matchingService: MatchingService) {}
 
   // ===== EXISTING HTTP ENDPOINTS =====
@@ -73,8 +74,8 @@ export class MatchingController {
           },
           estimatedArrival: Math.ceil(driver.distance * 2), // rough estimate: 2 min per km
           // Safely access customer-specific properties
-          ...(driver.hasOwnProperty('isPreferred') && { isPreferred: driver.isPreferred }),
-          ...(driver.hasOwnProperty('previousTripCount') && { previousTripCount: driver.previousTripCount }),
+          ...('isPreferred' in driver && { isPreferred: driver.isPreferred }),
+          ...('previousTripCount' in driver && { previousTripCount: driver.previousTripCount }),
         }));
 
         this.logger.log(
@@ -211,8 +212,8 @@ export class MatchingController {
           plateNumber: bestDriver.plateNumber,
           estimatedArrival: Math.ceil(bestDriver.distance * 2),
           // Safely access customer-specific properties
-          ...(bestDriver.hasOwnProperty('isPreferred') && { isPreferred: bestDriver.isPreferred }),
-          ...(bestDriver.hasOwnProperty('previousTripCount') && { previousTripCount: bestDriver.previousTripCount }),
+          ...('isPreferred' in bestDriver && { isPreferred: bestDriver.isPreferred }),
+          ...('previousTripCount' in bestDriver && { previousTripCount: bestDriver.previousTripCount }),
         },
         matchedAt: new Date().toISOString(),
         totalCandidates: driversResponse.data.length,
@@ -318,8 +319,8 @@ export class MatchingController {
             plateNumber: driver.plateNumber,
             estimatedArrival: Math.ceil(driver.distance * 2),
             // Safely access customer-specific properties
-            ...(driver.hasOwnProperty('isPreferred') && { isPreferred: driver.isPreferred }),
-            ...(driver.hasOwnProperty('previousTripCount') && { previousTripCount: driver.previousTripCount }),
+            ...('isPreferred' in driver && { isPreferred: driver.isPreferred }),
+            ...('previousTripCount' in driver && { previousTripCount: driver.previousTripCount }),
           })),
           totalFound: result.data.length,
           isReMatch: true,

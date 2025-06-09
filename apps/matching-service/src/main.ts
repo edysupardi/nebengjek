@@ -1,11 +1,12 @@
-import { NestFactory, Reflector } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { NestExpressApplication } from '@nestjs/platform-express';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import helmet from 'helmet';
+/* eslint-disable no-undef */
 import { ResponseInterceptor } from '@app/common/interceptors/response.interceptor';
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory, Reflector } from '@nestjs/core';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
-import { MatchingModule } from './algorithm/matching.module';
+import { MatchingModule } from './matching/matching.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(MatchingModule);
@@ -39,7 +40,7 @@ async function bootstrap() {
 
   // Start HTTP server
   await app.listen(httpPort);
-  console.log(`Matching HTTP service running on port ${httpPort}`);
+  logger.log(`Matching HTTP service running on port ${httpPort}`);
 
   // Create TCP microservice
   const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(MatchingModule, {
@@ -51,7 +52,7 @@ async function bootstrap() {
   });
 
   await microservice.listen();
-  console.log(`Matching TCP microservice running on port ${tcpPort}`);
+  logger.log(`Matching TCP microservice running on port ${tcpPort}`);
 }
 
 bootstrap();

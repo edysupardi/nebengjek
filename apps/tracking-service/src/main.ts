@@ -1,11 +1,11 @@
-import { NestFactory, Reflector } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { TrackingModule } from './tracking.module';
-import helmet from 'helmet';
-import { NestExpressApplication } from '@nestjs/platform-express';
 import { ResponseInterceptor } from '@app/common';
-import { Logger } from 'nestjs-pino';
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory, Reflector } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import helmet from 'helmet';
+import { Logger } from 'nestjs-pino';
+import { TrackingModule } from './tracking.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(TrackingModule);
@@ -37,11 +37,13 @@ async function bootstrap() {
   // ADD WebSocket adapter
   app.useWebSocketAdapter(new IoAdapter(app));
 
+  // eslint-disable-next-line no-undef
   const port = process.env.TRACKING_PORT || 3003;
-  console.log(`Tracking service is running on port ${port}`);
+  logger.log(`Tracking service is running on port ${port}`);
   await app.listen(port);
 
+  // eslint-disable-next-line no-undef
   const wsPort = process.env.TRACKING_WS_PORT || 3060;
-  console.log(`WebSocket server running on port ${wsPort}`);
+  logger.log(`WebSocket server running on port ${wsPort}`);
 }
 bootstrap();

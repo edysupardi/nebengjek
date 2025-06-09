@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@app/database';
 import { DriverProfile } from '@app/common/entities';
+import { PrismaService } from '@app/database';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class DriverProfileRepository {
+  /* eslint-disable no-unused-vars */
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: Partial<DriverProfile>): Promise<DriverProfile> {
@@ -49,5 +50,9 @@ export class DriverProfileRepository {
       where: { status: true },
       include: { user: true },
     });
+  }
+
+  async findMany(params: { where: any; include?: any }) {
+    return this.prisma.driverProfile.findMany(params);
   }
 }
