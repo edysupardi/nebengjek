@@ -1,38 +1,53 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Kong Gateway for NebengJek Microservices - Updated for External Database'
+Description: 'Kong Gateway for NebengJek - Using Pre-created IAM Roles'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
     AllowedValues: [dev, staging, prod]
-    Description: The deployment environment
 
   VpcId:
     Type: String
     Description: VPC where the resources will be deployed
+    Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
     Description: First private subnet
+    Default: subnet-09a266d6f99328dd2 # Replace with actual subnet ID
 
   PrivateSubnet2:
     Type: String
     Description: Second private subnet
+    Default: subnet-078f811f523ef7581 # Replace with actual subnet ID
 
   PublicSubnet1:
     Type: String
     Description: First public subnet
+    Default: subnet-0ef68a035beb20b73 # Replace with actual subnet ID
 
   PublicSubnet2:
     Type: String
     Description: Second public subnet
+    Default: subnet-07373bedcd3b3c802 # Replace with actual subnet ID
 
   ECSClusterName:
     Type: String
     Description: Name of the ECS cluster
 
-  # External Database Parameters (from nebengjek-db deployment)
+  # Pre-created IAM Role ARNs
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS execution role
+    Default: arn:aws:iam::699475956139:role/nebengjek-dev-kong-execution-role
+
+  TaskRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS task role
+    Default: arn:aws:iam::699475956139:role/nebengjek-dev-kong-task-role
+
+  # External Database Parameters
   DatabaseEndpoint:
     Type: String
     Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
@@ -51,9 +66,8 @@ Parameters:
   DatabasePassword:
     Type: String
     NoEcho: true
-    Description: Database password (store in secrets manager)
+    Description: Database password
 
-  # Kong-specific database name (separate schema)
   KongDatabaseName:
     Type: String
     Default: kong
@@ -156,45 +170,7 @@ Resources:
       Port: 80
       Protocol: HTTP
 
-  # ALB Listener for Kong Admin (Port 8001) - Internal only via path
-  KongAdminListener:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref KongAdminTargetGroup
-      Conditions:
-        - Field: path-pattern
-          Values: ['/admin/*']
-      ListenerArn: !Ref KongProxyListener
-      Priority: 100
-
-  # IAM Roles
-  KongExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-  KongTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-
-  # Kong Task Definition
+  # Kong Task Definition (USING EXISTING IAM ROLES)
   KongTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -204,8 +180,8 @@ Resources:
         - FARGATE
       Cpu: '512'
       Memory: '1024'
-      ExecutionRoleArn: !GetAtt KongExecutionRole.Arn
-      TaskRoleArn: !GetAtt KongTaskRole.Arn
+      ExecutionRoleArn: !Ref ExecutionRoleArn # ← Using pre-created role
+      TaskRoleArn: !Ref TaskRoleArn # ← Using pre-created role
       ContainerDefinitions:
         - Name: kong
           Image: kong:3.4
@@ -253,31 +229,6 @@ Resources:
             Retries: 3
             StartPeriod: 60
 
-        # Kong DB Migration Init Container
-        - Name: kong-migration
-          Image: kong:3.4
-          Essential: false
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref KongLogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: kong-migration
-          Environment:
-            - Name: KONG_DATABASE
-              Value: postgres
-            - Name: KONG_PG_HOST
-              Value: !Ref DatabaseEndpoint
-            - Name: KONG_PG_PORT
-              Value: !Ref DatabasePort
-            - Name: KONG_PG_USER
-              Value: !Ref DatabaseUsername
-            - Name: KONG_PG_PASSWORD
-              Value: !Ref DatabasePassword
-            - Name: KONG_PG_DATABASE
-              Value: !Ref KongDatabaseName
-          Command: ['sh', '-c', 'kong migrations bootstrap && kong migrations up']
-
   # Kong ECS Service
   KongService:
     Type: AWS::ECS::Service
@@ -289,7 +240,7 @@ Resources:
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 50
-      DesiredCount: 2
+      DesiredCount: 1 # Start with 1, can scale later
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -303,9 +254,6 @@ Resources:
         - ContainerName: kong
           ContainerPort: 8000
           TargetGroupArn: !Ref KongProxyTargetGroup
-        - ContainerName: kong
-          ContainerPort: 8001
-          TargetGroupArn: !Ref KongAdminTargetGroup
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-kong-service'
@@ -323,12 +271,6 @@ Outputs:
     Value: !Sub 'http://${KongALB.DNSName}'
     Export:
       Name: !Sub '${Environment}-KongProxyUrl'
-
-  KongAdminUrl:
-    Description: Kong Admin URL (for configuration)
-    Value: !Sub 'http://${KongALB.DNSName}/admin'
-    Export:
-      Name: !Sub '${Environment}-KongAdminUrl'
 
   KongSecurityGroupId:
     Description: Security Group ID for Kong

@@ -1,29 +1,85 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Minimal Booking Service - No IAM/ECS Creation'
+Description: 'NebengJek Booking Service - Using Pre-created IAM Roles'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
+    AllowedValues: [dev, staging, prod]
 
   VpcId:
     Type: String
-    Description: VPC ID
+    Description: VPC where the resources will be deployed
     Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
-    Description: Private subnet 1
-    Default: subnet-xxx # You need to get this from VPC stack
+    Description: First private subnet
+    Default: subnet-09a266d6f99328dd2 # Replace with actual subnet ID
 
   PrivateSubnet2:
     Type: String
-    Description: Private subnet 2
-    Default: subnet-yyy # You need to get this from VPC stack
+    Description: Second private subnet
+    Default: subnet-078f811f523ef7581 # Replace with actual subnet ID
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+
+  ECRRepository:
+    Type: String
+    Description: ECR repository name for Booking Service
+    Default: booking-service
+
+  # Pre-created IAM Role ARNs
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS execution role
+    Default: arn:aws:iam::699475956139:role/nebengjek-dev-booking-execution-role
+
+  TaskRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS task role
+    Default: arn:aws:iam::699475956139:role/nebengjek-dev-booking-task-role
+
+  # External Database Parameters
+  DatabaseEndpoint:
+    Type: String
+    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
+    Description: RDS PostgreSQL endpoint
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
+
+  DatabaseName:
+    Type: String
+    Default: nebengjek_prod
+    Description: Database name
+
+  DatabaseUsername:
+    Type: String
+    Default: nebengjek
+    Description: Database username
+
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    Description: Database password
+
+  RedisHost:
+    Type: String
+    Default: 'redis.nebengjek.local'
+    Description: Redis host
+
+  RedisPort:
+    Type: String
+    Default: '6379'
+    Description: Redis port
 
 Resources:
-  # Only create what we CAN create (EC2 and Logs resources)
-
+  # Security Group for Booking Service
   BookingServiceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -34,7 +90,7 @@ Resources:
           FromPort: 3002
           ToPort: 3002
           CidrIp: 10.0.0.0/16
-          Description: Booking Service HTTP port
+          Description: Booking Service port
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -42,46 +98,142 @@ Resources:
         - Key: Name
           Value: !Sub '${Environment}-booking-service-sg'
 
-  BookingServiceLogGroup:
-    Type: AWS::Logs::LogGroup
+  # Booking Service load balancer (internal)
+  BookingServiceALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      LogGroupName: !Sub '/ecs/${Environment}/booking-service'
-      RetentionInDays: 7
+      Scheme: internal
+      SecurityGroups:
+        - !Ref BookingServiceSecurityGroup
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-booking-service-alb'
 
-  # Target Group for Load Balancer (if ALB exists)
+  # Booking Service target group
   BookingServiceTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub '${Environment}-booking-tg'
-      Port: 3002
-      Protocol: HTTP
-      VpcId: !Ref VpcId
-      TargetType: ip
       HealthCheckEnabled: true
-      HealthCheckPath: /health
       HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
+      Port: 3002
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-booking-service-tg'
 
+  # Booking Service HTTP Listener
+  BookingServiceALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref BookingServiceTargetGroup
+      LoadBalancerArn: !Ref BookingServiceALB
+      Port: 3002
+      Protocol: HTTP
+
+  # Booking Service Task Definition (USING EXISTING IAM ROLES)
+  BookingServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-booking-service'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref ExecutionRoleArn # ← Using pre-created role
+      TaskRoleArn: !Ref TaskRoleArn # ← Using pre-created role
+      ContainerDefinitions:
+        - Name: booking-service
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BookingServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: booking-service
+          PortMappings:
+            - ContainerPort: 3002
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: BOOKING_SERVICE_PORT
+              Value: '3002'
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
+            - Name: REDIS_HOST
+              Value: !Ref RedisHost
+            - Name: REDIS_PORT
+              Value: !Ref RedisPort
+          HealthCheck:
+            Command: ['CMD-SHELL', 'curl -f http://localhost:3002/health || exit 1']
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+  # Booking Service Service
+  BookingServiceService:
+    Type: AWS::ECS::Service
+    DependsOn: BookingServiceALBListener
+    Properties:
+      ServiceName: !Sub '${Environment}-booking-service'
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref BookingServiceTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref BookingServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: booking-service
+          ContainerPort: 3002
+          TargetGroupArn: !Ref BookingServiceTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-booking-service-service'
+
+  # CloudWatch Logs Group
+  BookingServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}/booking-service'
+      RetentionInDays: 30
+
 Outputs:
-  SecurityGroupId:
+  ServiceUrl:
+    Description: URL of the Booking Service
+    Value: !Sub 'http://${BookingServiceALB.DNSName}:3002'
+    Export:
+      Name: !Sub '${Environment}-BookingServiceUrl'
+
+  BookingServiceHost:
+    Description: Host of the Booking Service
+    Value: !GetAtt BookingServiceALB.DNSName
+    Export:
+      Name: !Sub '${Environment}-BookingServiceHost'
+
+  BookingServiceSecurityGroupId:
     Description: Security Group ID for Booking Service
     Value: !Ref BookingServiceSecurityGroup
     Export:
-      Name: !Sub '${Environment}-BookingServiceSecurityGroup'
-
-  LogGroupName:
-    Description: CloudWatch Log Group for Booking Service
-    Value: !Ref BookingServiceLogGroup
-    Export:
-      Name: !Sub '${Environment}-BookingServiceLogGroup'
-
-  TargetGroupArn:
-    Description: Target Group ARN for Booking Service
-    Value: !Ref BookingServiceTargetGroup
-    Export:
-      Name: !Sub '${Environment}-BookingServiceTargetGroup'
+      Name: !Sub '${Environment}-BookingServiceSecurityGroupId'
