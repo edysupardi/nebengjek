@@ -134,7 +134,7 @@ jobs:
       - name: Build and push Docker images
         run: |
           services=("user-service" "booking-service" "matching-service" "notification-service" "payment-service" "tracking-service")
-          for service in "${services[@]}"; dof
+          for service in "${services[@]}"; do
             echo "🐳 Building $service..."
             
             # Check if Dockerfile exists in apps directory
