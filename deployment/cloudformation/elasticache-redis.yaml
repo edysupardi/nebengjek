@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'ElastiCache Redis for NebengJek - Fixed Version'
+Description: 'ElastiCache Redis for NebengJek - Final Fixed Version'
 
 Parameters:
   Environment:
@@ -59,7 +59,7 @@ Resources:
         - !Ref PrivateSubnet1
         - !Ref PrivateSubnet2
 
-  # Redis Parameter Group (for configuration)
+  # Redis Parameter Group
   RedisParameterGroup:
     Type: AWS::ElastiCache::ParameterGroup
     Properties:
@@ -69,19 +69,12 @@ Resources:
         maxmemory-policy: allkeys-lru
         timeout: 300
 
-  # CloudWatch Log Group for Redis
-  RedisLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/elasticache/${Environment}/nebengjek-redis'
-      RetentionInDays: 7
-
-  # ElastiCache Redis Cluster
+  # ElastiCache Redis Cluster - FIXED VERSION
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
     Properties:
       ReplicationGroupId: !Sub '${Environment}-nebengjek-redis'
-      Description: !Sub '${Environment} Redis cluster for NebengJek'
+      ReplicationGroupDescription: !Sub '${Environment} Redis cluster for NebengJek' # FIXED: was "Description"
 
       # Redis Configuration
       Engine: redis
@@ -109,15 +102,7 @@ Resources:
 
       # Security
       AtRestEncryptionEnabled: true
-      TransitEncryptionEnabled: false # Disable for simplicity
-
-      # Simplified Logging (remove problematic LogDeliveryConfigurations)
-      # LogDeliveryConfigurations:
-      #   - DestinationType: cloudwatch-logs
-      #     DestinationDetails:
-      #       LogGroup: !Ref RedisLogGroup
-      #     LogFormat: text
-      #     LogType: slow-log
+      TransitEncryptionEnabled: false
 
       Tags:
         - Key: Name
