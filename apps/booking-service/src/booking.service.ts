@@ -62,6 +62,15 @@ export class BookingService {
           status: 'searching_drivers',
         });
         await this.redis.expire(`booking:${booking.id}`, 3600);
+
+        const timeoutMinutes = parseInt(process.env.BOOKING_TIMEOUT_MINUTES || '3');
+        const timeoutSeconds = timeoutMinutes * 60;
+
+        await this.executeWithRetry(async () => {
+          await this.redis.set(`booking:${booking.id}:timeout`, 'pending', 'EX', timeoutSeconds);
+        });
+
+        this.logger.log(`🕐 Booking ${booking.id} timeout set for ${timeoutMinutes} minutes`);
       });
 
       // 3. NOTIFY CUSTOMER: Booking created, searching drivers
@@ -321,6 +330,23 @@ export class BookingService {
 
       // Store driver rejection in Redis to avoid re-matching
       await this.redis.sadd(`booking:${bookingId}:rejected-drivers`, driverId);
+
+      const isAutoCancelEnabled = process.env.BOOKING_AUTO_CANCEL_ENABLED === 'true';
+      if (isAutoCancelEnabled) {
+        const allRejected = await this.checkAllDriversRejected(bookingId);
+        if (allRejected) {
+          this.logger.log(`🤖 All drivers rejected booking ${bookingId}, scheduling smart cancel`);
+
+          // Delay 10 detik untuk memastikan tidak ada race condition
+          setTimeout(async () => {
+            try {
+              await this.smartCancelBooking(bookingId, 'all_drivers_rejected');
+            } catch (error) {
+              this.logger.error(`Error smart cancelling booking ${bookingId}:`, error);
+            }
+          }, 10000); // 10 seconds delay
+        }
+      }
 
       return { message: 'Booking rejected successfully' };
     } catch (error) {
@@ -735,6 +761,86 @@ export class BookingService {
       // Return null instead of throwing - fail safe approach
       // Better to potentially allow a booking than block everything
       return null;
+    }
+  }
+
+  /**
+   * Smart cancel booking berdasarkan kondisi tertentu
+   */
+  async smartCancelBooking(
+    bookingId: string,
+    reason: 'no_drivers_found' | 'all_drivers_rejected' | 'timeout' | 'system',
+  ): Promise<any> {
+    try {
+      const booking = await this.bookingRepository.findById(bookingId);
+      if (!booking) {
+        this.logger.warn(`Smart cancel failed: Booking ${bookingId} not found`);
+        return null;
+      }
+
+      // Only cancel if booking is still PENDING
+      if (booking.status !== BookingStatus.PENDING) {
+        this.logger.log(`Smart cancel skipped: Booking ${bookingId} status is ${booking.status}`);
+        return null;
+      }
+
+      this.logger.log(`🤖 Smart cancelling booking ${bookingId}, reason: ${reason}`);
+
+      // Update booking status to cancelled
+      const updatedBooking = await this.bookingRepository.update(bookingId, {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: new Date(),
+      });
+
+      // Publish cancellation event
+      await this.messagingService.publish(BookingEvents.CANCELLED, {
+        bookingId,
+        customerId: booking.customerId,
+        driverId: booking.driverId ?? undefined,
+        cancelledBy: 'system',
+      });
+
+      // Cleanup Redis data
+      await Promise.allSettled([
+        this.redis.del(`booking:${bookingId}:eligible-drivers`),
+        this.redis.del(`booking:${bookingId}:rejected-drivers`),
+        this.redis.del(`booking:${bookingId}`),
+        this.redis.del(`booking:${bookingId}:timeout`),
+      ]);
+
+      this.logger.log(`✅ Smart cancelled booking ${bookingId} successfully`);
+      return updatedBooking;
+    } catch (error) {
+      this.logger.error(`❌ Error smart cancelling booking ${bookingId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if all eligible drivers have rejected the booking
+   */
+  private async checkAllDriversRejected(bookingId: string): Promise<boolean> {
+    try {
+      const [eligibleDrivers, rejectedDrivers] = await Promise.all([
+        this.redis.smembers(`booking:${bookingId}:eligible-drivers`),
+        this.redis.smembers(`booking:${bookingId}:rejected-drivers`),
+      ]);
+
+      if (!eligibleDrivers || eligibleDrivers.length === 0) {
+        return false; // No eligible drivers, not rejection case
+      }
+
+      // Check if all eligible drivers have rejected
+      const allRejected = eligibleDrivers.every((driverId: string) => rejectedDrivers.includes(driverId));
+
+      if (allRejected) {
+        this.logger.log(`All ${eligibleDrivers.length} eligible drivers rejected booking ${bookingId}`);
+      }
+
+      return allRejected;
+    } catch (error) {
+      this.logger.error(`Error checking rejected drivers for booking ${bookingId}:`, error);
+      return false;
     }
   }
 }

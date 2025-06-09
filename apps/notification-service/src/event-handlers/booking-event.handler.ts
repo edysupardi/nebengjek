@@ -60,6 +60,12 @@ export class BookingEventHandler implements OnModuleInit {
         this.logger.error('❌ Failed to subscribe to BookingEvents.DRIVERS_READY:', subscribeError);
       }
 
+      this.messagingService.subscribe(
+        'booking.smart_cancel_requested' as any,
+        this.handleSmartCancelRequest.bind(this),
+      );
+      this.logger.log('✅ Subscribed to booking.smart_cancel_requested');
+
       this.logger.log('✅ Booking event listeners registered (Redis subscription)');
     } catch (error) {
       this.logger.error('❌ Error setting up event listeners:', error);
@@ -363,6 +369,33 @@ export class BookingEventHandler implements OnModuleInit {
         stack: error instanceof Error ? error.stack : 'No stack available',
         bookingId: payload?.bookingId,
       });
+    }
+  }
+
+  private async handleSmartCancelRequest(payload: {
+    bookingId: string;
+    customerId: string;
+    reason: 'no_drivers_found' | 'all_drivers_rejected' | 'timeout' | 'system';
+  }) {
+    try {
+      this.logger.log(`🤖 [Event] Handling smart cancel request for booking ${payload.bookingId}`);
+
+      // Notify customer about auto cancellation
+      const messages = {
+        no_drivers_found: 'No drivers available in your area. Your booking has been automatically cancelled.',
+        all_drivers_rejected: 'All nearby drivers are currently busy. Your booking has been automatically cancelled.',
+        timeout: 'No driver accepted your booking in time. Your booking has been automatically cancelled.',
+        system: 'Your booking has been cancelled by the system.',
+      };
+
+      this.notificationGateway.sendToCustomer(payload.customerId, 'booking.auto_cancelled', {
+        bookingId: payload.bookingId,
+        reason: payload.reason,
+        message: messages[payload.reason] || messages.system,
+        canRetry: payload.reason !== 'no_drivers_found',
+      });
+    } catch (error) {
+      this.logger.error(`❌ Error handling smart cancel request:`, error);
     }
   }
 }
