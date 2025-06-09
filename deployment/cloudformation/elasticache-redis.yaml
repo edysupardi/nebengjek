@@ -63,7 +63,7 @@ Resources:
   RedisParameterGroup:
     Type: AWS::ElastiCache::ParameterGroup
     Properties:
-      CacheParameterGroupFamily: redis7.x
+      CacheParameterGroupFamily: redis7
       Description: !Sub '${Environment} Redis parameter group'
       Properties:
         maxmemory-policy: allkeys-lru
