@@ -36,6 +36,11 @@ NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari
   - .env.example
   - .gitignore
 
+# 🔐 Password Hashing
+- Menggunakan `bcrypt` untuk keamanan
+- Salt rounds: 10 (default)
+- Digunakan untuk pengamanan akun user & driver
+
 # 🧩 Komponen Utama
 1. User Service
     * Registrasi & login user / driver
@@ -76,15 +81,30 @@ Entity yang dirancang:
 
 # ⚙️ Menjalankan Proyek
 ##  Local Setup
-1. Jalankan docker dependencies:
-
-    `docker-compose up -d`
-2. Jalankan aplikasi:
+1. Install semua library:
 
     `npm install`
 
+    jangan lupa `.env` di tambahkan dan di isi semua value yang dibutuhkan
+
+2. Generate prisma:
+
+    `npx prisma generate`
+
+    jika belum ada table nya, dapat menjalankan migration dengan cara `npx prisma migrate dev`, jika di database tersebut sebelumnya sudah ada schema public, dapat menjalankan `npx prisma migrate reset` (hati-hati dengan perintah ini, ini akan menghapus semua data di database).
+
+    Dan jika butuh data seeder dan menjalankan seeder dengan cara `npx prisma db seed`
+
+3. Jalankan aplikasi:
+
     `nx run-many --target=serve --all`
-3. Cek dokumentasi API (Swagger) di:
+    atau jika ingin menjalankan satu service bisa menggunakan (misal service user):
+
+    `npm run start:user`
+
+    `docker-compose up -d api-gateway user-service` contoh untuk menjalankan service user beserta api-gateway nya
+
+4. Cek dokumentasi API (Swagger) di:
 
     `localhost:3000/api` (API Gateway)
 

@@ -1,0 +1,295 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NebengJek User Service'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: The deployment environment
+    
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+    
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+    
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+    
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+    
+  ECRRepository:
+    Type: String
+    Description: ECR repository name for User Service
+    
+  DatabaseEndpoint:
+    Type: String
+    Description: Database endpoint
+    
+  DatabaseName:
+    Type: String
+    Description: Database name for User Service
+    
+  DatabaseUsername:
+    Type: String
+    Description: Database username for User Service
+    
+  DatabasePassword:
+    Type: String
+    Description: Database password for User Service
+    NoEcho: true
+    
+  RedisEndpoint:
+    Type: String
+    Description: Redis endpoint for caching
+
+Resources:
+  # Security Group for User Service
+  UserServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for User Service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3001
+          ToPort: 3001
+          SourceSecurityGroupId: !ImportValue ApiGatewaySecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-user-service-sg"
+  
+  # User Service load balancer (internal)
+  UserServiceALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      SecurityGroups:
+        - !Ref UserServiceSecurityGroup
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-user-service-alb"
+  
+  # User Service target group
+  UserServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 3001
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-user-service-tg"
+  
+  # User Service HTTP Listener
+  UserServiceALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref UserServiceTargetGroup
+      LoadBalancerArn: !Ref UserServiceALB
+      Port: 3001
+      Protocol: HTTP
+  
+  # User Service Task Definition
+  UserServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${Environment}-user-service"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt UserServiceExecutionRole.Arn
+      TaskRoleArn: !GetAtt UserServiceTaskRole.Arn
+      ContainerDefinitions:
+        - Name: user-service
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest"
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref UserServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: user-service
+          PortMappings:
+            - ContainerPort: 3001
+          Environment:
+            - Name: NODE_ENV
+              Value: !Ref Environment
+            - Name: DATABASE_URL
+              Value: !Sub "postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:5432/${DatabaseName}?schema=public"
+            - Name: REDIS_HOST
+              Value: !Select [0, !Split [":", !Ref RedisEndpoint]]
+            - Name: REDIS_PORT
+              Value: !Select [1, !Split [":", !Ref RedisEndpoint]]
+            - Name: JWT_ACCESS_SECRET
+              Value: !Sub "{{resolve:secretsmanager:${Environment}/jwt:SecretString:access_secret}}"
+            - Name: JWT_REFRESH_SECRET
+              Value: !Sub "{{resolve:secretsmanager:${Environment}/jwt:SecretString:refresh_secret}}"
+            - Name: JWT_ACCESS_EXPIRES_IN
+              Value: '15m'
+            - Name: JWT_REFRESH_EXPIRES_IN
+              Value: '7d'
+            - Name: USER_SERVICE_PORT
+              Value: '3001'
+          HealthCheck:
+            Command: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+  
+  # User Service Service
+  UserServiceService:
+    Type: AWS::ECS::Service
+    DependsOn: UserServiceALBListener
+    Properties:
+      ServiceName: !Sub "${Environment}-user-service"
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref UserServiceTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 2
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref UserServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: user-service
+          ContainerPort: 3001
+          TargetGroupArn: !Ref UserServiceTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-user-service-service"
+  
+  # Auto Scaling
+  UserServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 2
+      ResourceId: !Join 
+        - /
+        - - service
+          - !Ref ECSClusterName
+          - !GetAtt UserServiceService.Name
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      RoleARN: !GetAtt UserServiceAutoScalingRole.Arn
+  
+  UserServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${Environment}-user-service-scaling-policy"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref UserServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70.0
+  
+  # CloudWatch Logs Group
+  UserServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${Environment}/user-service"
+      RetentionInDays: 30
+  
+  # IAM Roles
+  UserServiceExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/jwt*"
+  
+  UserServiceTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonXRayDaemonWriteAccess
+  
+  UserServiceAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+Outputs:
+  ServiceUrl:
+    Description: URL of the User Service
+    Value: !Sub "http://${UserServiceALB.DNSName}:3001"
+    Export:
+      Name: !Sub "${Environment}-UserServiceUrl"
+  
+  UserServiceHost:
+    Description: Host of the User Service
+    Value: !GetAtt UserServiceALB.DNSName
+    Export:
+      Name: UserServiceHost
+  
+  UserServicePort:
+    Description: Port of the User Service
+    Value: "3001"
+    Export:
+      Name: UserServicePort
+  
+  UserServiceSecurityGroupId:
+    Description: Security Group ID for User Service
+    Value: !Ref UserServiceSecurityGroup
+    Export:
+      Name: !Sub "${Environment}-UserServiceSecurityGroupId"

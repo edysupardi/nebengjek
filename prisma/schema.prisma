@@ -1,0 +1,194 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED  // Driver menerima
+  REJECTED  // Driver menolak
+  ONGOING // dalam/proses perjalanan
+  CANCELLED // Customer membatalkan
+  COMPLETED // Perjalanan selesai
+}
+
+enum TripStatus {
+  ONGOING    // Perjalanan sedang berlangsung
+  COMPLETED  // Perjalanan selesai
+  CANCELLED  // Perjalanan dibatalkan
+}
+
+model User {
+  id            String          @id @default(uuid())
+  phone         String          @unique
+  name          String
+  email         String?         @unique
+  password      String
+  role          UserRole        @default(CUSTOMER)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  
+  // Relasi
+  driverProfile DriverProfile?
+  bookingsAsCustomer  Booking[]  @relation("CustomerBookings")
+  bookingsAsDriver    Booking[]  @relation("DriverBookings")
+  locations     Location[]
+  notifications Notification[]
+
+  @@index([role]) // Index untuk query berdasarkan role (misal: mencari semua driver)
+  @@index([email]) // Jika sering query berdasarkan email untuk login
+  @@map("users")
+}
+
+model DriverProfile {
+  id            String    @id @default(uuid())
+  userId        String    @unique @map("user_id")
+  status        Boolean   @default(false) // online/offline
+  lastLatitude  Float?    @map("last_latitude")
+  lastLongitude Float?    @map("last_longitude")
+  vehicleType   String?   @map("vehicle_type")
+  plateNumber   String?   @map("plate_number")
+  rating        Float     @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  // Relasi
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([status]) // Untuk mencari driver yang online
+  @@index([lastLatitude, lastLongitude]) // Untuk query geospatial/nearby drivers
+
+  @@map("driver_profiles")
+}
+
+model Booking {
+  id             String        @id @default(uuid())
+  customerId     String        @map("customer_id")
+  driverId       String?       @map("driver_id")
+  pickupLat      Float         @map("pickup_lat")
+  pickupLng      Float         @map("pickup_lng")
+  destinationLat Float         @map("destination_lat")
+  destinationLng Float         @map("destination_lng")
+  status         BookingStatus @default(PENDING)
+  
+  // Fields tracking waktu untuk setiap perubahan status
+  acceptedAt     DateTime?     @map("accepted_at")
+  rejectedAt     DateTime?     @map("rejected_at") 
+  cancelledAt    DateTime?     @map("cancelled_at")
+  startedAt      DateTime?     @map("started_at")
+  completedAt    DateTime?     @map("completed_at")
+  
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  
+  // Relasi
+  customer       User          @relation("CustomerBookings", fields: [customerId], references: [id])
+  driver         User?         @relation("DriverBookings", fields: [driverId], references: [id])
+  trip           Trip?
+
+  @@index([customerId]) // Untuk mencari booking berdasarkan customer
+  @@index([driverId]) // Untuk mencari booking berdasarkan driver
+  @@index([status]) // Untuk mencari booking berdasarkan status
+  @@index([createdAt]) // Untuk sorting dan filtering berdasarkan waktu
+
+  @@map("bookings")
+}
+
+model Trip {
+  id            String     @id @default(uuid())
+  bookingId     String     @unique @map("booking_id")
+  startTime     DateTime   @map("start_time")
+  endTime       DateTime?  @map("end_time")
+  distance      Float      @default(0)  // dalam kilometer
+  
+  // Perhitungan harga yang lebih detail
+  basePrice     Float      @default(0)  @map("base_price") // Rp 3.000/km
+  discountAmount Float     @default(0)  @map("discount_amount") // dalam rupiah
+  discountPercentage Float @default(0)  @map("discount_percentage") // persentase diskon
+  finalPrice    Float      @default(0)  @map("final_price") // harga setelah diskon
+  
+  // Pembagian fee platform
+  platformFeePercentage Float @default(5) @map("platform_fee_percentage") // default 5%
+  platformFeeAmount     Float @default(0) @map("platform_fee_amount")
+  driverAmount          Float @default(0) @map("driver_amount")
+  
+  status        TripStatus @default(ONGOING)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  
+  // Relasi
+  booking       Booking    @relation(fields: [bookingId], references: [id])
+  transaction   Transaction?
+
+  @@index([status]) // Untuk mencari trip berdasarkan status
+  @@index([startTime]) // Untuk query berdasarkan waktu mulai
+  @@index([endTime]) // Untuk query berdasarkan waktu selesai
+
+  @@map("trips")
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relasi
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp]) // Untuk query history lokasi user tertentu
+  @@index([latitude, longitude]) // Untuk query geospatial
+
+  @@map("locations")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  content   String
+  isRead    Boolean  @default(false) @map("is_read")
+  relatedId String?  // ID of related entity (booking, trip, etc.)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  // Relasi
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId]) // Meningkatkan performa query by userId
+  @@index([isRead]) // Meningkatkan performa query unread notifications
+  @@map("notifications")
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  tripId      String   @unique
+  trip        Trip     @relation(fields: [tripId], references: [id])
+  totalFare   Float    @map("total_fare")
+  driverShare Float    @map("driver_share") // 95% dari totalFare
+  platformFee Float    @map("platform_fee") // 5% dari totalFare
+  discount    Float    @default(0) // Diskon yang diberikan driver (opsional)
+  finalAmount Float    @map("final_amount") // Jumlah akhir setelah diskon
+  status      String   // 'pending', 'paid', 'cancelled'
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([status]) // Untuk mencari transaksi berdasarkan status
+  @@index([createdAt]) // Untuk reporting dan analisis berdasarkan waktu
+
+  @@map("transaction")
+}
