@@ -155,14 +155,12 @@ Resources:
               awslogs-group: !Ref UserServiceLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: user-service
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - curl -f http://localhost:3001/health || exit 1
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
+          # HealthCheck:
+          #   Command: ['CMD-SHELL', 'curl -f http://localhost:3001/health || exit 1']
+          #   Interval: 30
+          #   Timeout: 5
+          #   Retries: 3
+          #   StartPeriod: 60
 
   # ECS Service
   UserService:

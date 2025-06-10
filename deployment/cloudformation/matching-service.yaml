@@ -142,12 +142,12 @@ Resources:
               Value: !Ref RedisHost
             - Name: REDIS_PORT
               Value: !Ref RedisPort
-          HealthCheck:
-            Command: ['CMD-SHELL', 'curl -f http://localhost:3003/health || exit 1']
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
+          # HealthCheck:
+          #   Command: ['CMD-SHELL', 'curl -f http://localhost:3003/health || exit 1']
+          #   Interval: 30
+          #   Timeout: 5
+          #   Retries: 3
+          #   StartPeriod: 60
 
   MatchingServiceService:
     Type: AWS::ECS::Service
