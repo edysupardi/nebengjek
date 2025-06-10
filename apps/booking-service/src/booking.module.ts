@@ -49,30 +49,6 @@ import { BookingTimeoutJob } from './jobs/booking-timeout.job';
     HttpModule,
     ClientsModule.registerAsync([
       {
-        name: 'NOTIFICATION_SERVICE',
-        imports: [ConfigModule],
-        useFactory: (configService: ConfigService) => ({
-          transport: Transport.TCP,
-          options: {
-            host: configService.get('NOTIFICATION_SERVICE_HOST', 'notification-service'),
-            port: configService.get('NOTIFICATION_TCP_PORT', 8004), // TCP port for notification
-          },
-        }),
-        inject: [ConfigService],
-      },
-      {
-        name: 'MATCHING_SERVICE',
-        imports: [ConfigModule],
-        useFactory: (configService: ConfigService) => ({
-          transport: Transport.TCP,
-          options: {
-            host: configService.get('MATCHING_SERVICE_HOST', 'matching-service'),
-            port: configService.get('MATCHING_TCP_PORT', 8006), // TCP port for matching
-          },
-        }),
-        inject: [ConfigService],
-      },
-      {
         name: 'TRACKING_SERVICE',
         imports: [ConfigModule],
         useFactory: (configService: ConfigService) => ({

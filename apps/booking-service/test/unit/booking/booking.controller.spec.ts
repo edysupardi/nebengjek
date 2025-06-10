@@ -1,3 +1,4 @@
+// apps/booking-service/test/unit/booking/booking.controller.spec.ts
 import { BookingController } from '@app/booking/booking.controller';
 import { BookingService } from '@app/booking/booking.service';
 import { CreateBookingDto } from '@app/booking/dto/create-booking.dto';
@@ -5,52 +6,20 @@ import { UpdateBookingStatusDto } from '@app/booking/dto/update-booking-status.d
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { BookingFactory } from '../../mocks';
 
 describe('BookingController', () => {
   let controller: BookingController;
   let bookingService: jest.Mocked<BookingService>;
 
   const mockUser = {
-    userId: 'user-123',
+    userId: 'customer-123',
     role: 'customer',
   };
 
   const mockDriverUser = {
     userId: 'driver-123',
     role: 'driver',
-  };
-
-  const mockBooking = {
-    id: 'booking-123',
-    customerId: 'user-123',
-    driverId: 'driver-123',
-    pickupLat: -6.2088,
-    pickupLng: 106.8456,
-    destinationLat: -6.1944,
-    destinationLng: 106.8229,
-    status: BookingStatus.PENDING,
-    createdAt: new Date(),
-    acceptedAt: null,
-    rejectedAt: null,
-    cancelledAt: null,
-    startedAt: null,
-    completedAt: null,
-    customer: {
-      id: 'user-123',
-      name: 'John Doe',
-      phone: '+6281234567890',
-    },
-    driver: {
-      id: 'driver-123',
-      name: 'Driver Name',
-      phone: '+6281234567891',
-      driverProfile: {
-        rating: 4.5,
-        vehicleType: 'motorcycle',
-        lastLatitude: -6.2088,
-        lastLongitude: 106.8456,
-      },
-    },
   };
 
   const mockCreateBookingDto: CreateBookingDto = {
@@ -80,6 +49,7 @@ describe('BookingController', () => {
       getCustomerCancelledBookings: jest.fn(),
       getActiveBookingStatistics: jest.fn(),
       hasActiveBooking: jest.fn(),
+      smartCancelBooking: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -103,6 +73,7 @@ describe('BookingController', () => {
   describe('createBooking', () => {
     it('should create booking successfully', async () => {
       // Arrange
+      const mockBooking = BookingFactory.createWithRelations({ customerId: mockUser.userId });
       bookingService.createBooking.mockResolvedValue(mockBooking as any);
 
       // Act
@@ -111,35 +82,57 @@ describe('BookingController', () => {
       // Assert
       expect(result).toEqual(mockBooking);
       expect(bookingService.createBooking).toHaveBeenCalledWith(mockUser.userId, mockCreateBookingDto);
+      expect(bookingService.createBooking).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle BadRequestException when customer has active booking', async () => {
+      // Arrange
+      const error = new BadRequestException('You already have an active booking');
+      bookingService.createBooking.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.createBooking(mockUser, mockCreateBookingDto)).rejects.toThrow(BadRequestException);
+      expect(bookingService.createBooking).toHaveBeenCalledWith(mockUser.userId, mockCreateBookingDto);
+    });
+
+    it('should handle validation errors for invalid coordinates', async () => {
+      // Arrange
+      const invalidDto = {
+        ...mockCreateBookingDto,
+        pickupLatitude: 91, // Invalid latitude > 90
+      } as CreateBookingDto;
+      const error = new BadRequestException('Invalid coordinates');
+      bookingService.createBooking.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.createBooking(mockUser, invalidDto)).rejects.toThrow(BadRequestException);
+      expect(bookingService.createBooking).toHaveBeenCalledWith(mockUser.userId, invalidDto);
     });
 
     it('should handle service errors', async () => {
       // Arrange
-      bookingService.createBooking.mockRejectedValue(new BadRequestException('You already have an active booking'));
+      const error = new Error('Database connection error');
+      bookingService.createBooking.mockRejectedValue(error);
 
       // Act & Assert
-      await expect(controller.createBooking(mockUser, mockCreateBookingDto)).rejects.toThrow(BadRequestException);
+      await expect(controller.createBooking(mockUser, mockCreateBookingDto)).rejects.toThrow(
+        'Database connection error',
+      );
     });
 
-    it('should handle validation errors', async () => {
+    it('should handle unexpected errors', async () => {
       // Arrange
-      const invalidDto = {
-        pickupLatitude: 91, // Invalid latitude > 90
-        pickupLongitude: 106.8456,
-        destinationLatitude: -6.1944,
-        destinationLongitude: 106.8229,
-      } as CreateBookingDto;
-
-      bookingService.createBooking.mockRejectedValue(new BadRequestException('Invalid coordinates'));
+      bookingService.createBooking.mockRejectedValue('Unknown error');
 
       // Act & Assert
-      await expect(controller.createBooking(mockUser, invalidDto)).rejects.toThrow(BadRequestException);
+      await expect(controller.createBooking(mockUser, mockCreateBookingDto)).rejects.toThrow();
     });
   });
 
   describe('getBookingDetails', () => {
     it('should get booking details successfully', async () => {
       // Arrange
+      const mockBooking = BookingFactory.createWithRelations();
       bookingService.getBookingDetails.mockResolvedValue(mockBooking as any);
 
       // Act
@@ -148,22 +141,35 @@ describe('BookingController', () => {
       // Assert
       expect(result).toEqual(mockBooking);
       expect(bookingService.getBookingDetails).toHaveBeenCalledWith('booking-123');
+      expect(bookingService.getBookingDetails).toHaveBeenCalledTimes(1);
     });
 
     it('should handle booking not found', async () => {
       // Arrange
-      bookingService.getBookingDetails.mockRejectedValue(new NotFoundException('Booking not found'));
+      const error = new NotFoundException('Booking not found');
+      bookingService.getBookingDetails.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.getBookingDetails('nonexistent-booking')).rejects.toThrow(NotFoundException);
+      expect(bookingService.getBookingDetails).toHaveBeenCalledWith('nonexistent-booking');
     });
 
     it('should handle service errors', async () => {
       // Arrange
-      bookingService.getBookingDetails.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.getBookingDetails.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.getBookingDetails('booking-123')).rejects.toThrow('Database error');
+    });
+
+    it('should handle empty booking ID', async () => {
+      // Arrange
+      const error = new BadRequestException('Invalid booking ID');
+      bookingService.getBookingDetails.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.getBookingDetails('')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -171,7 +177,7 @@ describe('BookingController', () => {
     it('should get user bookings with default parameters', async () => {
       // Arrange
       const mockResponse = {
-        data: [mockBooking],
+        data: [BookingFactory.createWithRelations({ customerId: mockUser.userId })],
         meta: {
           total: 1,
           page: 1,
@@ -192,7 +198,7 @@ describe('BookingController', () => {
     it('should get user bookings with custom parameters', async () => {
       // Arrange
       const mockResponse = {
-        data: [mockBooking],
+        data: [BookingFactory.createWithRelations({ customerId: mockUser.userId, status: BookingStatus.PENDING })],
         meta: {
           total: 1,
           page: 2,
@@ -210,9 +216,42 @@ describe('BookingController', () => {
       expect(bookingService.getUserBookings).toHaveBeenCalledWith(mockUser.userId, BookingStatus.PENDING, 2, 5);
     });
 
+    it('should handle negative page numbers', async () => {
+      // Arrange
+      const mockResponse = {
+        data: [],
+        meta: { total: 0, page: 1, limit: 10, pages: 0 },
+      };
+      bookingService.getUserBookings.mockResolvedValue(mockResponse);
+
+      // Act
+      const result = await controller.getUserBookings(mockUser, undefined, -1, 10);
+
+      // Assert
+      expect(result).toEqual(mockResponse);
+      expect(bookingService.getUserBookings).toHaveBeenCalledWith(mockUser.userId, undefined, -1, 10);
+    });
+
+    it('should handle large limit values', async () => {
+      // Arrange
+      const mockResponse = {
+        data: [],
+        meta: { total: 0, page: 1, limit: 1000, pages: 0 },
+      };
+      bookingService.getUserBookings.mockResolvedValue(mockResponse);
+
+      // Act
+      const result = await controller.getUserBookings(mockUser, undefined, 1, 1000);
+
+      // Assert
+      expect(result).toEqual(mockResponse);
+      expect(bookingService.getUserBookings).toHaveBeenCalledWith(mockUser.userId, undefined, 1, 1000);
+    });
+
     it('should handle service errors', async () => {
       // Arrange
-      bookingService.getUserBookings.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.getUserBookings.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.getUserBookings(mockUser)).rejects.toThrow('Database error');
@@ -222,7 +261,7 @@ describe('BookingController', () => {
   describe('updateBookingStatus', () => {
     it('should update booking status successfully', async () => {
       // Arrange
-      const updatedBooking = { ...mockBooking, status: BookingStatus.ACCEPTED };
+      const updatedBooking = BookingFactory.createAccepted({ customerId: mockUser.userId });
       bookingService.updateBookingStatus.mockResolvedValue(updatedBooking as any);
 
       // Act
@@ -239,9 +278,8 @@ describe('BookingController', () => {
 
     it('should handle unauthorized access', async () => {
       // Arrange
-      bookingService.updateBookingStatus.mockRejectedValue(
-        new UnauthorizedException('You are not authorized to update this booking'),
-      );
+      const error = new UnauthorizedException('You are not authorized to update this booking');
+      bookingService.updateBookingStatus.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.updateBookingStatus(mockUser, 'booking-123', mockUpdateBookingStatusDto)).rejects.toThrow(
@@ -251,7 +289,8 @@ describe('BookingController', () => {
 
     it('should handle booking not found', async () => {
       // Arrange
-      bookingService.updateBookingStatus.mockRejectedValue(new NotFoundException('Booking not found'));
+      const error = new NotFoundException('Booking not found');
+      bookingService.updateBookingStatus.mockRejectedValue(error);
 
       // Act & Assert
       await expect(
@@ -261,9 +300,8 @@ describe('BookingController', () => {
 
     it('should handle invalid status transition', async () => {
       // Arrange
-      bookingService.updateBookingStatus.mockRejectedValue(
-        new BadRequestException('Cannot change status of a completed booking'),
-      );
+      const error = new BadRequestException('Cannot change status of a completed booking');
+      bookingService.updateBookingStatus.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.updateBookingStatus(mockUser, 'booking-123', mockUpdateBookingStatusDto)).rejects.toThrow(
@@ -275,7 +313,7 @@ describe('BookingController', () => {
   describe('acceptBooking', () => {
     it('should accept booking successfully', async () => {
       // Arrange
-      const acceptedBooking = { ...mockBooking, status: BookingStatus.ACCEPTED };
+      const acceptedBooking = BookingFactory.createAccepted({ driverId: mockDriverUser.userId });
       bookingService.acceptBooking.mockResolvedValue(acceptedBooking as any);
 
       // Act
@@ -288,9 +326,8 @@ describe('BookingController', () => {
 
     it('should handle booking already accepted', async () => {
       // Arrange
-      bookingService.acceptBooking.mockRejectedValue(
-        new BadRequestException('Booking has already been accepted by another driver'),
-      );
+      const error = new BadRequestException('Booking has already been accepted by another driver');
+      bookingService.acceptBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.acceptBooking(mockDriverUser, 'booking-123')).rejects.toThrow(BadRequestException);
@@ -298,9 +335,8 @@ describe('BookingController', () => {
 
     it('should handle driver not eligible', async () => {
       // Arrange
-      bookingService.acceptBooking.mockRejectedValue(
-        new UnauthorizedException('You are not eligible to accept this booking'),
-      );
+      const error = new UnauthorizedException('You are not eligible to accept this booking');
+      bookingService.acceptBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.acceptBooking(mockDriverUser, 'booking-123')).rejects.toThrow(UnauthorizedException);
@@ -308,9 +344,28 @@ describe('BookingController', () => {
 
     it('should handle driver has active booking', async () => {
       // Arrange
-      bookingService.acceptBooking.mockRejectedValue(
-        new BadRequestException('You already have an active booking or trip'),
+      const error = new BadRequestException('You already have an active booking or trip');
+      bookingService.acceptBooking.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.acceptBooking(mockDriverUser, 'booking-123')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should handle booking not found', async () => {
+      // Arrange
+      const error = new NotFoundException('Booking not found');
+      bookingService.acceptBooking.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.acceptBooking(mockDriverUser, 'nonexistent-booking')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should handle lock acquisition failure', async () => {
+      // Arrange
+      const error = new BadRequestException(
+        'Booking is currently being processed by another driver. Please try again.',
       );
+      bookingService.acceptBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.acceptBooking(mockDriverUser, 'booking-123')).rejects.toThrow(BadRequestException);
@@ -333,7 +388,8 @@ describe('BookingController', () => {
 
     it('should handle booking not found', async () => {
       // Arrange
-      bookingService.rejectBooking.mockRejectedValue(new NotFoundException('Booking not found'));
+      const error = new NotFoundException('Booking not found');
+      bookingService.rejectBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.rejectBooking(mockDriverUser, 'nonexistent-booking')).rejects.toThrow(NotFoundException);
@@ -341,19 +397,27 @@ describe('BookingController', () => {
 
     it('should handle booking not pending', async () => {
       // Arrange
-      bookingService.rejectBooking.mockRejectedValue(
-        new BadRequestException('Cannot reject booking with status accepted'),
-      );
+      const error = new BadRequestException('Cannot reject booking with status accepted');
+      bookingService.rejectBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.rejectBooking(mockDriverUser, 'booking-123')).rejects.toThrow(BadRequestException);
     });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Redis connection error');
+      bookingService.rejectBooking.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.rejectBooking(mockDriverUser, 'booking-123')).rejects.toThrow('Redis connection error');
+    });
   });
 
   describe('cancelBooking', () => {
-    it('should cancel booking successfully', async () => {
+    it('should cancel booking successfully by customer', async () => {
       // Arrange
-      const cancelledBooking = { ...mockBooking, status: BookingStatus.CANCELLED };
+      const cancelledBooking = BookingFactory.createCancelled({ customerId: mockUser.userId });
       bookingService.cancelBooking.mockResolvedValue(cancelledBooking as any);
 
       // Act
@@ -364,9 +428,26 @@ describe('BookingController', () => {
       expect(bookingService.cancelBooking).toHaveBeenCalledWith('booking-123', mockUser.userId);
     });
 
+    it('should cancel booking successfully by driver', async () => {
+      // Arrange
+      const cancelledBooking = BookingFactory.createCancelled({
+        customerId: mockUser.userId,
+        driverId: mockDriverUser.userId,
+      });
+      bookingService.cancelBooking.mockResolvedValue(cancelledBooking as any);
+
+      // Act
+      const result = await controller.cancelBooking(mockDriverUser, 'booking-123');
+
+      // Assert
+      expect(result).toEqual(cancelledBooking);
+      expect(bookingService.cancelBooking).toHaveBeenCalledWith('booking-123', mockDriverUser.userId);
+    });
+
     it('should handle booking not found', async () => {
       // Arrange
-      bookingService.cancelBooking.mockRejectedValue(new NotFoundException('Booking not found'));
+      const error = new NotFoundException('Booking not found');
+      bookingService.cancelBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.cancelBooking(mockUser, 'nonexistent-booking')).rejects.toThrow(NotFoundException);
@@ -374,9 +455,8 @@ describe('BookingController', () => {
 
     it('should handle unauthorized cancellation', async () => {
       // Arrange
-      bookingService.cancelBooking.mockRejectedValue(
-        new UnauthorizedException('You are not authorized to cancel this booking'),
-      );
+      const error = new UnauthorizedException('You are not authorized to cancel this booking');
+      bookingService.cancelBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.cancelBooking(mockUser, 'booking-123')).rejects.toThrow(UnauthorizedException);
@@ -384,9 +464,8 @@ describe('BookingController', () => {
 
     it('should handle invalid status for cancellation', async () => {
       // Arrange
-      bookingService.cancelBooking.mockRejectedValue(
-        new BadRequestException('Cannot cancel booking with status completed'),
-      );
+      const error = new BadRequestException('Cannot cancel booking with status completed');
+      bookingService.cancelBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.cancelBooking(mockUser, 'booking-123')).rejects.toThrow(BadRequestException);
@@ -409,7 +488,8 @@ describe('BookingController', () => {
 
     it('should handle booking not found', async () => {
       // Arrange
-      bookingService.deleteBooking.mockRejectedValue(new NotFoundException('Booking not found'));
+      const error = new NotFoundException('Booking not found');
+      bookingService.deleteBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.deleteBooking(mockUser, 'nonexistent-booking')).rejects.toThrow(NotFoundException);
@@ -417,19 +497,17 @@ describe('BookingController', () => {
 
     it('should handle unauthorized deletion', async () => {
       // Arrange
-      bookingService.deleteBooking.mockRejectedValue(
-        new UnauthorizedException('Only the customer can delete a booking'),
-      );
+      const error = new UnauthorizedException('Only the customer can delete a booking');
+      bookingService.deleteBooking.mockRejectedValue(error);
 
       // Act & Assert
-      await expect(controller.deleteBooking(mockUser, 'booking-123')).rejects.toThrow(UnauthorizedException);
+      await expect(controller.deleteBooking(mockDriverUser, 'booking-123')).rejects.toThrow(UnauthorizedException);
     });
 
     it('should handle invalid status for deletion', async () => {
       // Arrange
-      bookingService.deleteBooking.mockRejectedValue(
-        new BadRequestException('Cannot delete booking with status pending'),
-      );
+      const error = new BadRequestException('Cannot delete booking with status pending');
+      bookingService.deleteBooking.mockRejectedValue(error);
 
       // Act & Assert
       await expect(controller.deleteBooking(mockUser, 'booking-123')).rejects.toThrow(BadRequestException);
@@ -444,7 +522,7 @@ describe('BookingController', () => {
         userId: 'driver-123',
         startedAt: new Date(),
       };
-      const updatedBooking = { ...mockBooking, status: BookingStatus.ONGOING };
+      const updatedBooking = BookingFactory.createOngoing({ driverId: tcpData.userId });
       bookingService.updateBookingStatus.mockResolvedValue(updatedBooking as any);
 
       // Act
@@ -464,19 +542,46 @@ describe('BookingController', () => {
       );
     });
 
+    it('should update booking status without startedAt', async () => {
+      // Arrange
+      const tcpData = {
+        bookingId: 'booking-123',
+        userId: 'driver-123',
+      };
+      const updatedBooking = BookingFactory.createOngoing({ driverId: tcpData.userId });
+      bookingService.updateBookingStatus.mockResolvedValue(updatedBooking as any);
+
+      // Act
+      const result = await controller.updateBookingStatusTcp(tcpData);
+
+      // Assert
+      expect(result).toEqual({
+        success: true,
+        message: 'Booking updated to ONGOING',
+        data: updatedBooking,
+      });
+      expect(bookingService.updateBookingStatus).toHaveBeenCalledWith(
+        tcpData.bookingId,
+        tcpData.userId,
+        BookingStatus.ONGOING,
+        undefined,
+      );
+    });
+
     it('should handle service errors gracefully', async () => {
       // Arrange
       const tcpData = {
         bookingId: 'booking-123',
         userId: 'driver-123',
       };
-      bookingService.updateBookingStatus.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.updateBookingStatus.mockRejectedValue(error);
 
       // Act
       const result = await controller.updateBookingStatusTcp(tcpData);
 
       // Assert
-      expect(result).toBeUndefined(); // Method doesn't return anything on error
+      expect(result).toBeUndefined();
     });
 
     it('should handle unknown errors', async () => {
@@ -485,7 +590,7 @@ describe('BookingController', () => {
         bookingId: 'booking-123',
         userId: 'driver-123',
       };
-      bookingService.updateBookingStatus.mockRejectedValue('Unknown error');
+      bookingService.updateBookingStatus.mockRejectedValue('Unknown error string');
 
       // Act
       const result = await controller.updateBookingStatusTcp(tcpData);
@@ -502,7 +607,7 @@ describe('BookingController', () => {
         bookingId: 'booking-123',
         completedAt: new Date(),
       };
-      const completedBooking = { ...mockBooking, status: BookingStatus.COMPLETED };
+      const completedBooking = BookingFactory.createCompleted();
       bookingService.completeBookingFromTrip.mockResolvedValue(completedBooking as any);
 
       // Act
@@ -523,7 +628,23 @@ describe('BookingController', () => {
         bookingId: 'booking-123',
         completedAt: new Date(),
       };
-      bookingService.completeBookingFromTrip.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.completeBookingFromTrip.mockRejectedValue(error);
+
+      // Act
+      const result = await controller.completeBooking(tcpData);
+
+      // Assert
+      expect(result).toBeUndefined();
+    });
+
+    it('should handle unknown errors', async () => {
+      // Arrange
+      const tcpData = {
+        bookingId: 'booking-123',
+        completedAt: new Date(),
+      };
+      bookingService.completeBookingFromTrip.mockRejectedValue('Unknown error');
 
       // Act
       const result = await controller.completeBooking(tcpData);
@@ -539,7 +660,7 @@ describe('BookingController', () => {
       const tcpData = { driverIds: ['driver-1', 'driver-2'] };
       const availabilityData = [
         { driverId: 'driver-1', isAvailable: true, activeBooking: null },
-        { driverId: 'driver-2', isAvailable: false, activeBooking: mockBooking },
+        { driverId: 'driver-2', isAvailable: false, activeBooking: BookingFactory.create() },
       ];
       bookingService.checkMultipleDriversAvailability.mockResolvedValue(availabilityData);
 
@@ -554,10 +675,26 @@ describe('BookingController', () => {
       expect(bookingService.checkMultipleDriversAvailability).toHaveBeenCalledWith(tcpData.driverIds);
     });
 
+    it('should handle empty driver list', async () => {
+      // Arrange
+      const tcpData = { driverIds: [] };
+      bookingService.checkMultipleDriversAvailability.mockResolvedValue([]);
+
+      // Act
+      const result = await controller.checkDriversAvailability(tcpData);
+
+      // Assert
+      expect(result).toEqual({
+        success: true,
+        data: [],
+      });
+    });
+
     it('should handle service errors', async () => {
       // Arrange
       const tcpData = { driverIds: ['driver-1'] };
-      bookingService.checkMultipleDriversAvailability.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.checkMultipleDriversAvailability.mockRejectedValue(error);
 
       // Act
       const result = await controller.checkDriversAvailability(tcpData);
@@ -595,7 +732,7 @@ describe('BookingController', () => {
         daysBack: 30,
         limit: 50,
       };
-      const historyData = [mockBooking];
+      const historyData = [BookingFactory.createCompleted({ customerId: tcpData.customerId })];
       bookingService.getCustomerBookingHistory.mockResolvedValue(historyData);
 
       // Act
@@ -638,7 +775,8 @@ describe('BookingController', () => {
         customerId: 'customer-123',
         daysBack: 30,
       };
-      bookingService.getCustomerBookingHistory.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.getCustomerBookingHistory.mockRejectedValue(error);
 
       // Act
       const result = await controller.getCustomerBookingHistory(tcpData);
@@ -647,6 +785,25 @@ describe('BookingController', () => {
       expect(result).toEqual({
         success: false,
         message: 'Database error',
+        data: [],
+      });
+    });
+
+    it('should handle unknown errors', async () => {
+      // Arrange
+      const tcpData = {
+        customerId: 'customer-123',
+        daysBack: 30,
+      };
+      bookingService.getCustomerBookingHistory.mockRejectedValue('Unknown error');
+
+      // Act
+      const result = await controller.getCustomerBookingHistory(tcpData);
+
+      // Assert
+      expect(result).toEqual({
+        success: false,
+        message: 'An unknown error occurred',
         data: [],
       });
     });
@@ -659,7 +816,7 @@ describe('BookingController', () => {
         customerId: 'customer-123',
         daysBack: 30,
       };
-      const cancelledBookings = [{ ...mockBooking, status: BookingStatus.CANCELLED }];
+      const cancelledBookings = [BookingFactory.createCancelled({ customerId: tcpData.customerId })];
       bookingService.getCustomerCancelledBookings.mockResolvedValue(cancelledBookings);
 
       // Act
@@ -679,7 +836,8 @@ describe('BookingController', () => {
         customerId: 'customer-123',
         daysBack: 30,
       };
-      bookingService.getCustomerCancelledBookings.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.getCustomerCancelledBookings.mockRejectedValue(error);
 
       // Act
       const result = await controller.getCustomerCancelledBookings(tcpData);
@@ -688,6 +846,25 @@ describe('BookingController', () => {
       expect(result).toEqual({
         success: false,
         message: 'Database error',
+        data: [],
+      });
+    });
+
+    it('should handle unknown errors', async () => {
+      // Arrange
+      const tcpData = {
+        customerId: 'customer-123',
+        daysBack: 30,
+      };
+      bookingService.getCustomerCancelledBookings.mockRejectedValue('Unknown error');
+
+      // Act
+      const result = await controller.getCustomerCancelledBookings(tcpData);
+
+      // Assert
+      expect(result).toEqual({
+        success: false,
+        message: 'An unknown error occurred',
         data: [],
       });
     });
@@ -719,7 +896,8 @@ describe('BookingController', () => {
 
     it('should handle service errors', async () => {
       // Arrange
-      bookingService.getActiveBookingStatistics.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.getActiveBookingStatistics.mockRejectedValue(error);
 
       // Act
       const result = await controller.getActiveBookingStats();
@@ -731,10 +909,25 @@ describe('BookingController', () => {
         data: {},
       });
     });
+
+    it('should handle unknown errors', async () => {
+      // Arrange
+      bookingService.getActiveBookingStatistics.mockRejectedValue('Unknown error');
+
+      // Act
+      const result = await controller.getActiveBookingStats();
+
+      // Assert
+      expect(result).toEqual({
+        success: false,
+        message: 'An unknown error occurred',
+        data: {},
+      });
+    });
   });
 
   describe('checkDriverActiveBooking', () => {
-    it('should check driver active booking successfully', async () => {
+    it('should check driver active booking successfully - no active booking', async () => {
       // Arrange
       const tcpData = { driverId: 'driver-123' };
       bookingService.hasActiveBooking.mockResolvedValue(false);
@@ -774,7 +967,8 @@ describe('BookingController', () => {
     it('should handle service errors with fail safe', async () => {
       // Arrange
       const tcpData = { driverId: 'driver-123' };
-      bookingService.hasActiveBooking.mockRejectedValue(new Error('Database error'));
+      const error = new Error('Database error');
+      bookingService.hasActiveBooking.mockRejectedValue(error);
 
       // Act
       const result = await controller.checkDriverActiveBooking(tcpData);
