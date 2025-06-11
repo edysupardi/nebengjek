@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NebengJek Tracking Service - Using Pre-created IAM Roles'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+
+  ECRRepository:
+    Type: String
+    Description: ECR repository name for Tracking Service
+    Default: tracking-service
+
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS execution role
+
+  TaskRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS task role
+
+  DatabaseEndpoint:
+    Type: String
+    Description: RDS PostgreSQL endpoint from external infrastructure
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
+
+  DatabaseName:
+    Type: String
+    Description: Database name
+
+  DatabaseUsername:
+    Type: String
+    Description: Database username
+
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    Description: Database password
+
+  RedisHost:
+    Type: String
+    Description: Redis host from external infrastructure
+
+  RedisPort:
+    Type: String
+    Default: '6379'
+    Description: Redis port
+
+  ImageTag:
+    Type: String
+    Description: Docker image tag
+    Default: latest
+
+Resources:
+  TrackingServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Tracking Service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3006
+          ToPort: 3006
+          CidrIp: 10.0.0.0/16
+          Description: Tracking Service port
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-tracking-service-sg'
+
+  TrackingServiceALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      SecurityGroups:
+        - !Ref TrackingServiceSecurityGroup
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-tracking-service-alb'
+
+  TrackingServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 3006
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-tracking-service-tg'
+
+  TrackingServiceALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TrackingServiceTargetGroup
+      LoadBalancerArn: !Ref TrackingServiceALB
+      Port: 3006
+      Protocol: HTTP
+
+  TrackingServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-tracking-service'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref ExecutionRoleArn
+      TaskRoleArn: !Ref TaskRoleArn
+      ContainerDefinitions:
+        - Name: tracking-service
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:${ImageTag}'
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref TrackingServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: tracking-service
+          PortMappings:
+            - ContainerPort: 3006
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: TRACKING_SERVICE_PORT
+              Value: '3006'
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
+            - Name: REDIS_HOST
+              Value: !Ref RedisHost
+            - Name: REDIS_PORT
+              Value: !Ref RedisPort
+          # HealthCheck:
+          #   Command: ['CMD-SHELL', 'curl -f http://localhost:3006/health || exit 1']
+          #   Interval: 30
+          #   Timeout: 5
+          #   Retries: 3
+          #   StartPeriod: 60
+
+  TrackingServiceService:
+    Type: AWS::ECS::Service
+    DependsOn: TrackingServiceALBListener
+    Properties:
+      ServiceName: !Sub '${Environment}-tracking-service'
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref TrackingServiceTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref TrackingServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: tracking-service
+          ContainerPort: 3006
+          TargetGroupArn: !Ref TrackingServiceTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-tracking-service-service'
+
+  TrackingServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}/tracking-service'
+      RetentionInDays: 30
+
+Outputs:
+  ServiceUrl:
+    Description: URL of the Tracking Service
+    Value: !Sub 'http://${TrackingServiceALB.DNSName}:3006'
+    Export:
+      Name: !Sub '${Environment}-TrackingServiceUrl'
+
+  TrackingServiceHost:
+    Description: Host of the Tracking Service
+    Value: !GetAtt TrackingServiceALB.DNSName
+    Export:
+      Name: !Sub '${Environment}-TrackingServiceHost'
+
+  TrackingServiceSecurityGroupId:
+    Description: Security Group ID for Tracking Service
+    Value: !Ref TrackingServiceSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-TrackingServiceSecurityGroupId'

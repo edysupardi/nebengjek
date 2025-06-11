@@ -1,0 +1,202 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NebengJek Matching Service - Using Pre-created IAM Roles'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+
+  ECRRepository:
+    Type: String
+    Description: ECR repository name for Matching Service
+    Default: matching-service
+
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS execution role
+
+  TaskRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS task role
+
+  RedisHost:
+    Type: String
+    Description: Redis host from external infrastructure
+
+  RedisPort:
+    Type: String
+    Default: '6379'
+    Description: Redis port
+
+  ImageTag:
+    Type: String
+    Description: Docker image tag
+    Default: latest
+
+Resources:
+  MatchingServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Matching Service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3003
+          ToPort: 3003
+          CidrIp: 10.0.0.0/16
+          Description: Matching Service port
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-matching-service-sg'
+
+  MatchingServiceALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      SecurityGroups:
+        - !Ref MatchingServiceSecurityGroup
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-matching-service-alb'
+
+  MatchingServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 3003
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-matching-service-tg'
+
+  MatchingServiceALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MatchingServiceTargetGroup
+      LoadBalancerArn: !Ref MatchingServiceALB
+      Port: 3003
+      Protocol: HTTP
+
+  MatchingServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-matching-service'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref ExecutionRoleArn
+      TaskRoleArn: !Ref TaskRoleArn
+      ContainerDefinitions:
+        - Name: matching-service
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:${ImageTag}'
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MatchingServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: matching-service
+          PortMappings:
+            - ContainerPort: 3003
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: MATCHING_SERVICE_PORT
+              Value: '3003'
+            - Name: REDIS_HOST
+              Value: !Ref RedisHost
+            - Name: REDIS_PORT
+              Value: !Ref RedisPort
+          # HealthCheck:
+          #   Command: ['CMD-SHELL', 'curl -f http://localhost:3003/health || exit 1']
+          #   Interval: 30
+          #   Timeout: 5
+          #   Retries: 3
+          #   StartPeriod: 60
+
+  MatchingServiceService:
+    Type: AWS::ECS::Service
+    DependsOn: MatchingServiceALBListener
+    Properties:
+      ServiceName: !Sub '${Environment}-matching-service'
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref MatchingServiceTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref MatchingServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: matching-service
+          ContainerPort: 3003
+          TargetGroupArn: !Ref MatchingServiceTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-matching-service-service'
+
+  MatchingServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}/matching-service'
+      RetentionInDays: 30
+
+Outputs:
+  ServiceUrl:
+    Description: URL of the Matching Service
+    Value: !Sub 'http://${MatchingServiceALB.DNSName}:3003'
+    Export:
+      Name: !Sub '${Environment}-MatchingServiceUrl'
+
+  MatchingServiceHost:
+    Description: Host of the Matching Service
+    Value: !GetAtt MatchingServiceALB.DNSName
+    Export:
+      Name: !Sub '${Environment}-MatchingServiceHost'
+
+  MatchingServiceSecurityGroupId:
+    Description: Security Group ID for Matching Service
+    Value: !Ref MatchingServiceSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-MatchingServiceSecurityGroupId'

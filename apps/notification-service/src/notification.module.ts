@@ -73,7 +73,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
             port: configService.get('REDIS_PORT', 6379),
             db: 0,
           }),
-          prisma: new PrismaService(),
+          prisma: new PrismaService(configService),
         };
       },
       inject: [ConfigService],

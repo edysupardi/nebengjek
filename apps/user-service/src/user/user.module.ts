@@ -1,11 +1,11 @@
-import { forwardRef, Module } from '@nestjs/common';
-import { UserService } from '@app/user/user.service';
-import { UserController } from '@app/user/user.controller';
-import { UserRepository } from '@app/user/repositories/user.repository';
 import { AuthModule } from '@app/auth/auth.module';
 import { HealthModule } from '@app/common/health/health.module';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaService } from '@app/database';
+import { UserRepository } from '@app/user/repositories/user.repository';
+import { UserController } from '@app/user/user.controller';
+import { UserService } from '@app/user/user.service';
+import { forwardRef, Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -23,7 +23,7 @@ import { PrismaService } from '@app/database';
             host: configService.get('REDIS_HOST', 'localhost'),
             port: configService.get('REDIS_PORT', 6379),
           }),
-          prisma: new PrismaService(),
+          prisma: new PrismaService(configService),
         };
       },
       inject: [ConfigService],

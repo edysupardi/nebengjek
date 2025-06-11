@@ -9,6 +9,8 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ScheduleModule } from '@nestjs/schedule';
+import { BookingTimeoutJob } from './jobs/booking-timeout.job';
 
 /**
  * @module BookingModule
@@ -39,7 +41,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
             host: configService.get('REDIS_HOST', 'localhost'),
             port: configService.get('REDIS_PORT', 6379),
           }),
-          prisma: new PrismaService(),
+          prisma: new PrismaService(configService),
         };
       },
       inject: [ConfigService],
@@ -83,9 +85,10 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
         inject: [ConfigService],
       },
     ]),
+    ScheduleModule.forRoot(),
   ],
   controllers: [BookingController],
-  providers: [BookingService, BookingRepository, PrismaService],
+  providers: [BookingService, BookingRepository, PrismaService, BookingTimeoutJob],
   exports: [BookingService, BookingRepository],
 })
 export class BookingModule {}

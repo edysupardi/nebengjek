@@ -1,0 +1,234 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NebengJek Payment Service - Using Pre-created IAM Roles'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+  VpcId:
+    Type: String
+    Description: VPC where the resources will be deployed
+
+  PrivateSubnet1:
+    Type: String
+    Description: First private subnet
+
+  PrivateSubnet2:
+    Type: String
+    Description: Second private subnet
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+
+  ECRRepository:
+    Type: String
+    Description: ECR repository name for Payment Service
+    Default: payment-service
+
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS execution role
+
+  TaskRoleArn:
+    Type: String
+    Description: ARN of pre-created ECS task role
+
+  DatabaseEndpoint:
+    Type: String
+    Description: RDS PostgreSQL endpoint from external infrastructure
+
+  DatabasePort:
+    Type: String
+    Default: '5432'
+    Description: Database port
+
+  DatabaseName:
+    Type: String
+    Description: Database name
+
+  DatabaseUsername:
+    Type: String
+    Description: Database username
+
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    Description: Database password
+
+  RedisHost:
+    Type: String
+    Description: Redis host from external infrastructure
+
+  RedisPort:
+    Type: String
+    Default: '6379'
+    Description: Redis port
+
+  ImageTag:
+    Type: String
+    Description: Docker image tag
+    Default: latest
+
+Resources:
+  PaymentServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Payment Service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3005
+          ToPort: 3005
+          CidrIp: 10.0.0.0/16
+          Description: Payment Service HTTP port
+        - IpProtocol: tcp
+          FromPort: 8007
+          ToPort: 8007
+          CidrIp: 10.0.0.0/16
+          Description: Payment Service TCP port
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-payment-service-sg'
+
+  PaymentServiceALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      SecurityGroups:
+        - !Ref PaymentServiceSecurityGroup
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-payment-service-alb'
+
+  PaymentServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 3005
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-payment-service-tg'
+
+  PaymentServiceALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref PaymentServiceTargetGroup
+      LoadBalancerArn: !Ref PaymentServiceALB
+      Port: 3005
+      Protocol: HTTP
+
+  PaymentServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-payment-service'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref ExecutionRoleArn
+      TaskRoleArn: !Ref TaskRoleArn
+      ContainerDefinitions:
+        - Name: payment-service
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:${ImageTag}'
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref PaymentServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: payment-service
+          PortMappings:
+            - ContainerPort: 3005
+            - ContainerPort: 8007
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PAYMENT_SERVICE_PORT
+              Value: '3005'
+            - Name: PAYMENT_TCP_PORT
+              Value: '8007'
+            - Name: DATABASE_URL
+              Value: !Sub 'postgresql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}?sslmode=require'
+            - Name: REDIS_HOST
+              Value: !Ref RedisHost
+            - Name: REDIS_PORT
+              Value: !Ref RedisPort
+          # HealthCheck:
+          #   Command: ['CMD-SHELL', 'curl -f http://localhost:3005/health || exit 1']
+          #   Interval: 30
+          #   Timeout: 5
+          #   Retries: 3
+          #   StartPeriod: 60
+
+  PaymentServiceService:
+    Type: AWS::ECS::Service
+    DependsOn: PaymentServiceALBListener
+    Properties:
+      ServiceName: !Sub '${Environment}-payment-service'
+      Cluster: !Ref ECSClusterName
+      TaskDefinition: !Ref PaymentServiceTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref PaymentServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      LoadBalancers:
+        - ContainerName: payment-service
+          ContainerPort: 3005
+          TargetGroupArn: !Ref PaymentServiceTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-payment-service-service'
+
+  PaymentServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}/payment-service'
+      RetentionInDays: 30
+
+Outputs:
+  ServiceUrl:
+    Description: URL of the Payment Service
+    Value: !Sub 'http://${PaymentServiceALB.DNSName}:3005'
+    Export:
+      Name: !Sub '${Environment}-PaymentServiceUrl'
+
+  PaymentServiceHost:
+    Description: Host of the Payment Service
+    Value: !GetAtt PaymentServiceALB.DNSName
+    Export:
+      Name: !Sub '${Environment}-PaymentServiceHost'
+
+  PaymentServiceSecurityGroupId:
+    Description: Security Group ID for Payment Service
+    Value: !Ref PaymentServiceSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-PaymentServiceSecurityGroupId'

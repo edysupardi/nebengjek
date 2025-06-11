@@ -1,12 +1,12 @@
+import { HealthModule } from '@app/common/health/health.module';
+import { LoggingModule } from '@app/common/modules/logging.module';
+import { PrismaService } from '@app/database';
+import { LocationModule } from '@app/location/location.module';
+import { MessagingModule } from '@app/messaging';
+import { MaintenanceService } from '@app/tracking-maintenance/maintenance.service';
+import { TripModule } from '@app/trip/trip.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { LocationModule } from '@app/location/location.module';
-import { TripModule } from '@app/trip/trip.module';
-import { LoggingModule } from '@app/common/modules/logging.module';
-import { MaintenanceService } from '@app/tracking-maintenance/maintenance.service';
-import { HealthModule } from '@app/common/health/health.module';
-import { PrismaService } from '@app/database';
-import { MessagingModule } from '@app/messaging';
 
 @Module({
   imports: [
@@ -26,7 +26,7 @@ import { MessagingModule } from '@app/messaging';
             host: configService.get('REDIS_HOST', 'localhost'),
             port: configService.get('REDIS_PORT', 6379),
           }),
-          prisma: new PrismaService(),
+          prisma: new PrismaService(configService),
         };
       },
       inject: [ConfigService],

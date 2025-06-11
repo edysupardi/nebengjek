@@ -97,6 +97,30 @@ export class DriverSearchHandler {
         // Update status to no drivers found
         await this.redis.hset(`booking:${payload.bookingId}`, 'status', 'no_drivers_found');
 
+        // SMART CANCEL: Auto cancel jika tidak ada driver
+        const isAutoCancelEnabled = process.env.BOOKING_AUTO_CANCEL_ENABLED === 'true';
+        if (isAutoCancelEnabled) {
+          this.logger.log(`🤖 Auto-cancelling booking ${payload.bookingId} - no drivers found`);
+
+          // Delay 30 detik untuk memberi waktu retry manual
+          setTimeout(async () => {
+            try {
+              // Double check booking masih pending
+              const bookingStatus = await this.redis.hget(`booking:${payload.bookingId}`, 'status');
+              if (bookingStatus === 'no_drivers_found') {
+                // Publish smart cancel event
+                await this.messagingService.publish('booking.smart_cancel_requested' as any, {
+                  bookingId: payload.bookingId,
+                  customerId: payload.customerId,
+                  reason: 'no_drivers_found',
+                });
+              }
+            } catch (error) {
+              this.logger.error(`Error auto-cancelling booking ${payload.bookingId}:`, error);
+            }
+          }, 30000); // 30 seconds delay
+        }
+
         // Notify customer no drivers found
         await this.messagingService.publish(BookingEvents.NEARBY_DRIVERS_FOUND, {
           bookingId: payload.bookingId,

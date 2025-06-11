@@ -1,41 +1,44 @@
 # 🚀 NebengJek – Backend System
 
-NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari Gojek dan Grab. Proyek ini mengimplementasikan layanan booking, pencarian driver terdekat (matching), pelacakan real-time (tracking), dan notifikasi. Aplikasi ini dikembangkan menggunakan pendekatan Monorepo dengan framework NestJS
+NebengJek adalah sistem backend untuk layanan ojek online yang inovatif, menggabungkan konsep transportasi dan aplikasi kencan. Sistem ini dirancang khusus untuk ekosistem Telkomsel dengan pendekatan yang ringan, sederhana, dan cepat. NebengJek menggunakan lokasi Telkomsel untuk mendeteksi posisi pengguna dan menghubungkan dengan ojek terdekat dalam radius 1 kilometer.
 
 # 🏗️ Teknologi & Tools
 
-| Fungsi                 | Teknologi                            |
-| ---------------------- | ------------------------------------ |
-| Bahasa Pemrograman     | TypeScript                           |
-| Framework Backend      | NestJS (Monorepo)                    |
-| Database               | PostgreSQL, Redis                    |
-| Realtime Communication | WebSocket (NestJS Gateway)           |
-| Containerization       | Docker + docker-compose              |
-| Autentikasi            | JWT (JSON Web Token)                 |
-| Testing                | Jest + Supertest                     |
-| Arsitektur Service     | Microservices Modular dalam Monorepo |
-| Cloud Deployment       | AWS EC2 (opsional), juga bisa lokal  |
+| Kategori                 | Teknologi                                                            | Alasan Pemilihan                                                                    |
+| ------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Kerangka Kerja**       | NestJS (TypeScript)                                                  | Arsitektur modular, dependency injection bawaan, dukungan TypeScript yang excellent |
+| **Arsitektur**           | Microservices dalam Monorepo                                         | Kemudahan pemeliharaan tinggi, perpustakaan bersama, deployment mudah               |
+| **Basis Data**           | PostgreSQL + Redis                                                   | PostgreSQL untuk konsistensi data, Redis untuk lokasi real-time & caching           |
+| **Komunikasi Real-time** | WebSocket (NestJS Gateway)                                           | Latensi rendah untuk pelacakan lokasi dan notifikasi                                |
+| **Antrian Pesan**        | Redis Pub/Sub                                                        | Arsitektur event-driven untuk komunikasi antar layanan                              |
+| **Autentikasi**          | JWT + Refresh Token                                                  | Autentikasi stateless dengan praktik keamanan terbaik                               |
+| **Kontainerisasi**       | Docker + Docker Compose                                              | Konsistensi lingkungan dan deployment mudah                                         |
+| **ORM**                  | Prisma                                                               | Akses basis data yang type-safe, manajemen migrasi                                  |
+| **Pengujian**            | Jest + Supertest                                                     | Unit testing dan end-to-end testing                                                 |
+| **Infrastruktur Cloud**  | AWS (CloudFormation)                                                 | Skalabel, layanan terkelola                                                         |
+| **Protokol Komunikasi**  | TCP untuk antar-layanan, WebSocket untuk real-time, REST untuk klien | Pola komunikasi yang dioptimalkan                                                   |
 
 # 📂 Struktur Monorepo
 
-- **nebengjek/**
-  - **libs/**
-    - common/
-    - interfaces/
-  - **docs/**
-    - diagrams/
-    - contracts/
-    - pictures/
-  - **apps/**
-    - notification-service/
-    - matching-service/
-    - booking-service/
-    - user-service/
-    - tracking-service/
-  - docker-compose.yml
-  - README.md
-  - .env.example
-  - .gitignore
+```bash
+📦nebengjek/
+├── 📂apps/ # Microservices
+│ ├── 📂user-service/ # Autentikasi, manajemen pengguna & pengemudi
+│ ├── 📂booking-service/ # Manajemen siklus hidup booking
+│ ├── 📂matching-service/ # Algoritma pencocokan pengemudi-pelanggan
+│ ├── 📂tracking-service/ # Lokasi real-time & pelacakan perjalanan
+│ ├── 📂payment-service/ # Kalkulasi & pemrosesan pembayaran
+│ └── 📂notification-service/ # Notifikasi WebSocket & penanganan event
+├── 📂libs/ # Perpustakaan Bersama
+│ ├── 📂common/ # Entity, DTO, guard, decorator bersama
+│ ├── 📂database/ # Modul Prisma & Redis
+│ └── 📂messaging/ # Utilitas pesan event-driven
+├── 📂deployment/ # Infrastructure as Code
+│ ├── 📂docker/ # Dockerfile untuk setiap layanan
+│ └── 📂cloudformation/ # Template infrastruktur AWS
+├── 📂prisma/ # Skema basis data & migrasi
+└── 📂docs/ # Dokumentasi & diagram
+```
 
 # 🔐 Password Hashing
 
@@ -45,72 +48,154 @@ NebengJek adalah sistem backend untuk layanan ojek online yang terinspirasi dari
 
 # 🧩 Komponen Utama
 
-1. User Service
-   - Registrasi & login user / driver
-   - Profile & role (penumpang/driver)
-   - Generate JWT token
-2. Booking Service
-   - Buat booking
-   - Update status booking (requested, accepted, completed)
-   - Cancel
-3. Matching Service
-   - Ambil lokasi user dari request
-   - Cari driver terdekat dari Database
-   - Mengirim pesan ke driver
-4. Notification Service
-   - WebSocket handler
-   - Kirim update real-time posisi atau status booking ke user atau driver
-5. Tracking Service
-   - Driver update lokasi
-   - User fetch lokasi driver secara real-time
+1. Layanan Pengguna 🔐
 
-# 🗺️ High-Level Architecture
+Fungsi: Autentikasi, registrasi pengguna, manajemen profil
+Fitur: Autentikasi berbasis JWT, akses berbasis peran (CUSTOMER/DRIVER), manajemen profil pengemudi
+Basis Data: Entity User, DriverProfile
+API: Endpoint REST untuk autentikasi dan manajemen profil
 
-Deskripsi:
+2. Layanan Booking 📋
 
-- Setiap service berkomunikasi via TCP
-- Redis menyimpan posisi driver real-time
-- PostgreSQL menyimpan data utama
-- WebSocket untuk komunikasi real-time
+Fungsi: Manajemen siklus hidup booking dari pembuatan hingga penyelesaian
+Fitur: Buat booking, pembaruan status, penanganan pembatalan
+Integrasi: Komunikasi TCP dengan layanan matching untuk pencarian pengemudi
+Basis Data: Entity Booking dengan pelacakan timestamp status
+Event: Publikasi event booking untuk layanan notifikasi
+
+3. Layanan Matching 🎯
+
+Fungsi: Algoritma pencarian pengemudi terdekat dalam radius 1km
+Fitur: Kalkulasi geospasial, pemeriksaan ketersediaan pengemudi, optimisasi pencocokan
+Sumber Data: Redis untuk lokasi pengemudi real-time
+Komunikasi: Konsumsi event booking, respons TCP ke layanan booking
+Algoritma: Formula Haversine untuk kalkulasi jarak
+
+4. Layanan Pelacakan 📍
+
+Fungsi: Pelacakan lokasi real-time dan manajemen perjalanan
+Fitur: Pembaruan lokasi, mulai/selesai perjalanan, kalkulasi jarak, kalkulasi biaya
+Real-time: WebSocket untuk siaran lokasi
+Integrasi: Komunikasi TCP dengan layanan pembayaran untuk penagihan
+Basis Data: Entity Trip, Location dengan indeks geospasial
+
+5. Layanan Pembayaran 💰
+
+Fungsi: Kalkulasi tarif, pemrosesan pembayaran, pembagian pendapatan
+Fitur: Harga dinamis (3.000 IDR/km), opsi diskon pengemudi, biaya platform (5%)
+Integrasi: Komunikasi TCP dengan layanan pelacakan
+Basis Data: Entity Transaction untuk catatan keuangan
+Logika Bisnis: Kalkulasi biaya platform, optimisasi pendapatan pengemudi
+
+6. Layanan Notifikasi 🔔
+
+Fungsi: Notifikasi real-time dan manajemen WebSocket
+Fitur: Notifikasi multi-channel, pesan event-driven, siaran WebSocket
+Penangan Event: Event booking, event pencarian pengemudi, event perjalanan
+Komunikasi: Gateway WebSocket untuk komunikasi klien real-time
+Basis Data: Entity Notification untuk pesan persisten
+
+# 🗺️ High-Level Design
+
+![HLD](docs/pictures/hld.png)
+
+# 🗺️ Low-Level Design
+
+![HLD](docs/pictures/lld.png)
 
 # 🔍 ERD (Entity Relationship Diagram)
 
 Entity yang dirancang:
 
-- User (Passenger, Driver)
-- Booking
-- Trip
-- Driver Profile
-- Notification
-- Transaction
-- Location
+- User: Autentikasi Pelanggan & Pengemudi
+- DriverProfile: Data khusus pengemudi (status, lokasi, kendaraan)
+- Booking: Permintaan perjalanan dengan siklus hidup status
+- Trip: Perjalanan aktif dengan pelacakan jarak & biaya
+- Transaction: Catatan pembayaran dengan pembagian pendapatan
+- Location: Riwayat posisi real-time
+- Notification: Pesan multi-channel
 
 ![ERD](docs/pictures/erd.png)
 
+# 🚀 Alur Bisnis NebengJek
+
+1. Alur Pencarian & Pencocokan Pengemudi
+
+   Pelanggan Buat Booking → Layanan Booking (REST)
+   → Simpan ke PostgreSQL
+   → Publikasi Pesan (Redis Pub/Sub)
+   → Penangan Pencarian Pengemudi
+   → Layanan Matching (TCP)
+   → Cari Pengemudi dalam radius 1km
+   → Notifikasi WebSocket ke Pelanggan & Pengemudi yang Eligible
+
+2. Alur Penerimaan Booking
+
+   Pengemudi Terima → Layanan Booking (REST)
+   → Perbarui Status Booking (PostgreSQL)
+   → Publikasi Event (Redis Pub/Sub)
+   → Notifikasi WebSocket ke Pelanggan
+
+3. Alur Eksekusi Perjalanan
+
+   Pengemudi Mulai Perjalanan → Layanan Pelacakan (REST)
+   → Inisialisasi Trip (PostgreSQL)
+   → Publikasi Event → Notifikasi WebSocket ke Pelanggan
+   → Pembaruan Lokasi Real-time (WebSocket)
+   → Kalkulasi Jarak (setiap pembaruan lokasi)
+   → Kalkulasi Biaya (3.000 IDR/km)
+
+4. Alur Penyelesaian Perjalanan & Pembayaran
+
+   Pengemudi Akhiri Perjalanan → Layanan Pelacakan (REST)
+   → TCP ke Layanan Booking (Selesaikan Booking)
+   → TCP ke Layanan Pembayaran (Proses Pembayaran)
+   → Distribusi Pendapatan (Pengemudi 95%, Platform 5%)
+   → Catatan Transaksi (PostgreSQL)
+
 # ⚙️ Menjalankan Proyek
 
-## Local Setup
+### Prasyarat
 
-1. Install semua library:
+```bash
+# Install dependensi
+npm install
 
-   `npm install`
+# Setup variabel lingkungan
+cp .env.example .env
+# Isi semua nilai yang diperlukan dalam .env
+```
 
-   jangan lupa `.env` di tambahkan dan di isi semua value yang dibutuhkan
+### Database
 
-2. Generate prisma:
+```bash
+# Generate klien Prisma
+npx prisma generate
 
-   `npx prisma generate`
+# Jalankan migrasi (basis data baru)
+npx prisma migrate dev
 
-   jika belum ada table nya, dapat menjalankan migration dengan cara `npx prisma migrate dev`, jika di database tersebut sebelumnya sudah ada schema public, dapat menjalankan `npx prisma migrate reset` (hati-hati dengan perintah ini, ini akan menghapus semua data di database).
+# Reset basis data (jika diperlukan)
+npx prisma migrate reset
 
-   Dan jika butuh data seeder dan menjalankan seeder dengan cara `npx prisma db seed`
+# Seeder data awal
+npx prisma db seed
+```
 
-3. Jalankan aplikasi:
+### Development
 
-   `npm run start:user`
-   jika ingin menjalankan satu service, atau jika ingin menjalankan semua service bisa pakai docker
+```bash
+# Jalankan layanan tunggal
+npm run start:user
+npm run start:booking
+npm run start:matching
+npm run start:tracking
+npm run start:payment
+npm run start:notification
 
-   `docker-compose up --build -d` contoh untuk menjalankan service user beserta nya
+# Jalankan semua layanan dengan Docker
+docker-compose up --build -d
+```
 
 # 🧪 End-to-End Testing (E2E)
 
@@ -130,8 +215,7 @@ Berikut ini beberapa skenario E2E yang akan diuji:
 - Matching menggunakan perhitungan jarak sederhana (haversine/Euclidean)
 - Transaksi real money tidak diimplementasikan
 - Beberapa data disimpan sementara di Redis (misalnya lokasi driver)
-- Event async diatur via Redis Pub/Sub
-- Microservice komunikasi via TCP
+- Event async diatur via RabbitMQ basic queue
 
 # 🤝 Tim & Kontribusi
 

@@ -1,11 +1,11 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { HealthModule } from '@app/common';
+import { LoggingModule } from '@app/common/modules/logging.module';
 import { DatabaseModule, PrismaService } from '@app/database';
 import { PaymentController } from '@app/payment/payment.controller';
 import { PaymentService } from '@app/payment/payment.service';
 import { TransactionRepository } from '@app/payment/repositories/transaction.repository';
-import { HealthModule } from '@app/common';
-import { LoggingModule } from '@app/common/modules/logging.module';
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -24,7 +24,7 @@ import { LoggingModule } from '@app/common/modules/logging.module';
             host: configService.get('REDIS_HOST', 'localhost'),
             port: configService.get('REDIS_PORT', 6379),
           }),
-          prisma: new PrismaService(),
+          prisma: new PrismaService(configService),
         };
       },
       inject: [ConfigService],
