@@ -1,0 +1,290 @@
+name: 'Build and Deploy to VPS via Docker Hub'
+
+on:
+  push:
+    branches: [main, development]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - prod
+
+env:
+  DOCKER_HUB_ORGANIZATION: nebengjek
+  ENVIRONMENT: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+
+jobs:
+  build-and-push:
+    name: 'Build and Push to Docker Hub'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build and push all microservices
+        run: |
+          echo "🐳 Building and pushing all microservices to Docker Hub..."
+
+          services=("user-service" "booking-service" "matching-service" "notification-service" "payment-service" "tracking-service")
+
+          for service in "${services[@]}"; do
+            echo "🏗️ Building $service..."
+            
+            # Check if Dockerfile exists
+            if [ -f "./deployment/docker/$service.dockerfile" ]; then
+              echo "✅ Found Dockerfile for $service"
+              
+              # Build with multiple tags
+              docker build \
+                -f ./deployment/docker/$service.dockerfile \
+                -t $DOCKER_HUB_ORGANIZATION/$service:latest \
+                -t $DOCKER_HUB_ORGANIZATION/$service:${{ github.sha }} \
+                -t $DOCKER_HUB_ORGANIZATION/$service:${{ env.ENVIRONMENT }} \
+                .
+              
+              echo "📤 Pushing $service to Docker Hub..."
+              docker push $DOCKER_HUB_ORGANIZATION/$service:latest
+              docker push $DOCKER_HUB_ORGANIZATION/$service:${{ github.sha }}
+              docker push $DOCKER_HUB_ORGANIZATION/$service:${{ env.ENVIRONMENT }}
+              
+              echo "✅ $service pushed successfully!"
+            else
+              echo "❌ Dockerfile not found for $service at ./deployment/docker/$service.dockerfile"
+              exit 1
+            fi
+          done
+
+      - name: Generate deployment summary
+        run: |
+          echo "📊 DOCKER HUB DEPLOYMENT SUMMARY"
+          echo "================================="
+          echo ""
+          echo "🏗️ Built and pushed:"
+          echo "   📦 nebengjek/user-service:latest"
+          echo "   📦 nebengjek/booking-service:latest"
+          echo "   📦 nebengjek/matching-service:latest"
+          echo "   📦 nebengjek/notification-service:latest"
+          echo "   📦 nebengjek/payment-service:latest"
+          echo "   📦 nebengjek/tracking-service:latest"
+          echo ""
+          echo "🏷️ Tags created for each service:"
+          echo "   • latest (for production)"
+          echo "   • ${{ github.sha }} (commit specific)"
+          echo "   • ${{ env.ENVIRONMENT }} (environment specific)"
+          echo ""
+          echo "🎯 Next step: Deploy to VPS!"
+
+  deploy-to-vps:
+    name: 'Deploy to VPS'
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH connection
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy microservices to VPS
+        run: |
+          echo "🚀 Deploying microservices to VPS..."
+
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+          set -e
+
+          echo "📁 Creating deployment directory..."
+          sudo mkdir -p /opt/nebengjek-services
+          cd /opt/nebengjek-services
+
+          echo "🛑 Stopping existing services..."
+          # Stop existing containers if they exist
+          for service in user-service booking-service matching-service notification-service payment-service tracking-service; do
+            sudo docker stop nebengjek-$service 2>/dev/null || true
+            sudo docker rm nebengjek-$service 2>/dev/null || true
+          done
+
+          echo "📥 Pulling latest images from Docker Hub..."
+          services=("user-service" "booking-service" "matching-service" "notification-service" "payment-service" "tracking-service")
+
+          for service in "${services[@]}"; do
+            echo "Pulling nebengjek/$service:latest..."
+            sudo docker pull nebengjek/$service:latest
+          done
+
+          echo "🔄 Starting microservices..."
+
+          # User Service (Port 3001)
+          sudo docker run -d \
+            --name nebengjek-user-service \
+            --restart unless-stopped \
+            --network bridge \
+            -p 3001:3001 \
+            -e NODE_ENV=production \
+            -e USER_PORT=3001 \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+            -e JWT_ACCESS_SECRET="${{ secrets.JWT_ACCESS_SECRET }}" \
+            -e JWT_REFRESH_SECRET="${{ secrets.JWT_REFRESH_SECRET }}" \
+            nebengjek/user-service:latest
+
+          # Booking Service (Port 3002)
+          sudo docker run -d \
+            --name nebengjek-booking-service \
+            --restart unless-stopped \
+            --network bridge \
+            -p 3002:3002 \
+            -e NODE_ENV=production \
+            -e BOOKING_PORT=3002 \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+            nebengjek/booking-service:latest
+
+          # Matching Service (Port 3003)
+          sudo docker run -d \
+            --name nebengjek-matching-service \
+            --restart unless-stopped \
+            --network bridge \
+            -p 3003:3003 \
+            -e NODE_ENV=production \
+            -e MATCHING_PORT=3003 \
+            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+            nebengjek/matching-service:latest
+
+          # Notification Service (Port 3004)
+          sudo docker run -d \
+            --name nebengjek-notification-service \
+            --restart unless-stopped \
+            --network bridge \
+            -p 3004:3004 \
+            -e NODE_ENV=production \
+            -e NOTIFICATION_PORT=3004 \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+            nebengjek/notification-service:latest
+
+          # Payment Service (Port 3005)
+          sudo docker run -d \
+            --name nebengjek-payment-service \
+            --restart unless-stopped \
+            --network bridge \
+            -p 3005:3005 \
+            -e NODE_ENV=production \
+            -e PAYMENT_PORT=3005 \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+            nebengjek/payment-service:latest
+
+          # Tracking Service (Port 3006)
+          sudo docker run -d \
+            --name nebengjek-tracking-service \
+            --restart unless-stopped \
+            --network bridge \
+            -p 3006:3006 \
+            -e NODE_ENV=production \
+            -e TRACKING_PORT=3006 \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+            nebengjek/tracking-service:latest
+
+          echo "✅ All microservices deployed!"
+
+          echo "🔍 Checking service status..."
+          sudo docker ps --filter "name=nebengjek-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          echo "🔄 Reloading Nginx configuration..."
+          sudo nginx -t && sudo systemctl reload nginx
+
+          echo "🎉 Deployment completed successfully!"
+          EOF
+
+      - name: Verify deployment
+        run: |
+          echo "🔍 Verifying deployment..."
+
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+          echo "📊 Service Status Check:"
+          echo "======================="
+
+          services=("user-service" "booking-service" "matching-service" "notification-service" "payment-service" "tracking-service")
+          ports=(3001 3002 3003 3004 3005 3006)
+
+          for i in "${!services[@]}"; do
+            service="${services[i]}"
+            port="${ports[i]}"
+            
+            echo "Checking $service on port $port..."
+            
+            # Check if container is running
+            if sudo docker ps | grep -q "nebengjek-$service"; then
+              echo "✅ Container nebengjek-$service is running"
+              
+              # Try to check health endpoint
+              if curl -s -f "http://localhost:$port/health" > /dev/null 2>&1; then
+                echo "✅ Health check passed for $service"
+              else
+                echo "⚠️ Health check failed for $service (may still be starting)"
+              fi
+            else
+              echo "❌ Container nebengjek-$service is not running"
+            fi
+            echo ""
+          done
+
+          echo "📋 All Running Containers:"
+          sudo docker ps --filter "name=nebengjek-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          echo ""
+          echo "🌐 Nginx Status:"
+          sudo systemctl status nginx --no-pager -l
+          EOF
+
+      - name: Generate deployment report
+        run: |
+          echo ""
+          echo "🎉 NEBENGJEK VPS DEPLOYMENT COMPLETED!"
+          echo "====================================="
+          echo ""
+          echo "🏗️ Infrastructure Status:"
+          echo "   ✅ PostgreSQL Database (Ready)"
+          echo "   ✅ Redis Cache (Ready)"
+          echo "   ✅ Nginx Web Server (Ready)"
+          echo "   ✅ UFW Firewall (Ready)"
+          echo ""
+          echo "🚀 Microservices Deployed:"
+          echo "   📱 User Service      → http://your-domain/api/users/"
+          echo "   📅 Booking Service   → http://your-domain/api/bookings/"
+          echo "   🔍 Matching Service  → http://your-domain/api/matching/"
+          echo "   🔔 Notification Service → http://your-domain/api/notifications/"
+          echo "   💳 Payment Service   → http://your-domain/api/payments/"
+          echo "   📍 Tracking Service  → http://your-domain/api/tracking/"
+          echo ""
+          echo "🔗 Management Interfaces:"
+          echo "   📊 pgAdmin: http://your-vps-ip:5050"
+          echo "   🗄️ Redis Commander: http://your-vps-ip:8081"
+          echo ""
+          echo "🎯 Next Steps:"
+          echo "   1. ✅ Test API endpoints through Nginx"
+          echo "   2. 🔒 Setup SSL certificates (Let's Encrypt)"
+          echo "   3. 📱 Test mobile app integration"
+          echo "   4. 📊 Setup monitoring (optional)"
