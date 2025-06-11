@@ -15,7 +15,6 @@ on:
           - prod
 
 env:
-  DOCKER_HUB_ORGANIZATION: nebengjek
   ENVIRONMENT: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
 
 jobs:
@@ -52,15 +51,15 @@ jobs:
               # Build with multiple tags
               docker build \
                 -f ./deployment/docker/$service.dockerfile \
-                -t $DOCKER_HUB_ORGANIZATION/$service:latest \
-                -t $DOCKER_HUB_ORGANIZATION/$service:${{ github.sha }} \
-                -t $DOCKER_HUB_ORGANIZATION/$service:${{ env.ENVIRONMENT }} \
+                -t ${{ secrets.DOCKER_HUB_USERNAME }}/$service:latest \
+                -t ${{ secrets.DOCKER_HUB_USERNAME }}/$service:${{ github.sha }} \
+                -t ${{ secrets.DOCKER_HUB_USERNAME }}/$service:${{ env.ENVIRONMENT }} \
                 .
               
               echo "📤 Pushing $service to Docker Hub..."
-              docker push $DOCKER_HUB_ORGANIZATION/$service:latest
-              docker push $DOCKER_HUB_ORGANIZATION/$service:${{ github.sha }}
-              docker push $DOCKER_HUB_ORGANIZATION/$service:${{ env.ENVIRONMENT }}
+              docker push ${{ secrets.DOCKER_HUB_USERNAME }}/$service:latest
+              docker push ${{ secrets.DOCKER_HUB_USERNAME }}/$service:${{ github.sha }}
+              docker push ${{ secrets.DOCKER_HUB_USERNAME }}/$service:${{ env.ENVIRONMENT }}
               
               echo "✅ $service pushed successfully!"
             else
@@ -75,12 +74,12 @@ jobs:
           echo "================================="
           echo ""
           echo "🏗️ Built and pushed:"
-          echo "   📦 nebengjek/user-service:latest"
-          echo "   📦 nebengjek/booking-service:latest"
-          echo "   📦 nebengjek/matching-service:latest"
-          echo "   📦 nebengjek/notification-service:latest"
-          echo "   📦 nebengjek/payment-service:latest"
-          echo "   📦 nebengjek/tracking-service:latest"
+          echo "   📦 ${{ secrets.DOCKER_HUB_USERNAME }}/user-service:latest"
+          echo "   📦 ${{ secrets.DOCKER_HUB_USERNAME }}/booking-service:latest"
+          echo "   📦 ${{ secrets.DOCKER_HUB_USERNAME }}/matching-service:latest"
+          echo "   📦 ${{ secrets.DOCKER_HUB_USERNAME }}/notification-service:latest"
+          echo "   📦 ${{ secrets.DOCKER_HUB_USERNAME }}/payment-service:latest"
+          echo "   📦 ${{ secrets.DOCKER_HUB_USERNAME }}/tracking-service:latest"
           echo ""
           echo "🏷️ Tags created for each service:"
           echo "   • latest (for production)"
@@ -124,13 +123,19 @@ jobs:
             sudo docker rm nebengjek-$service 2>/dev/null || true
           done
 
+          echo "🔐 Login to Docker Hub..."
+          echo "${{ secrets.DOCKER_HUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+
           echo "📥 Pulling latest images from Docker Hub..."
           services=("user-service" "booking-service" "matching-service" "notification-service" "payment-service" "tracking-service")
 
           for service in "${services[@]}"; do
-            echo "Pulling nebengjek/$service:latest..."
-            sudo docker pull nebengjek/$service:latest
+            echo "Pulling ${{ secrets.DOCKER_HUB_USERNAME }}/$service:latest..."
+            sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/$service:latest
           done
+
+          echo "🔒 Logout from Docker Hub..."
+          sudo docker logout
 
           echo "🔄 Starting microservices..."
 
@@ -142,11 +147,11 @@ jobs:
             -p 3001:3001 \
             -e NODE_ENV=production \
             -e USER_PORT=3001 \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-            -e JWT_ACCESS_SECRET="${{ secrets.JWT_ACCESS_SECRET }}" \
-            -e JWT_REFRESH_SECRET="${{ secrets.JWT_REFRESH_SECRET }}" \
-            nebengjek/user-service:latest
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e REDIS_URL='${{ secrets.REDIS_URL }}' \
+            -e JWT_ACCESS_SECRET='${{ secrets.JWT_ACCESS_SECRET }}' \
+            -e JWT_REFRESH_SECRET='${{ secrets.JWT_REFRESH_SECRET }}' \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/user-service:latest
 
           # Booking Service (Port 3002)
           sudo docker run -d \
@@ -156,9 +161,9 @@ jobs:
             -p 3002:3002 \
             -e NODE_ENV=production \
             -e BOOKING_PORT=3002 \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-            nebengjek/booking-service:latest
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e REDIS_URL='${{ secrets.REDIS_URL }}' \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/booking-service:latest
 
           # Matching Service (Port 3003)
           sudo docker run -d \
@@ -168,8 +173,8 @@ jobs:
             -p 3003:3003 \
             -e NODE_ENV=production \
             -e MATCHING_PORT=3003 \
-            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-            nebengjek/matching-service:latest
+            -e REDIS_URL='${{ secrets.REDIS_URL }}' \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/matching-service:latest
 
           # Notification Service (Port 3004)
           sudo docker run -d \
@@ -179,9 +184,9 @@ jobs:
             -p 3004:3004 \
             -e NODE_ENV=production \
             -e NOTIFICATION_PORT=3004 \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-            nebengjek/notification-service:latest
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e REDIS_URL='${{ secrets.REDIS_URL }}' \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/notification-service:latest
 
           # Payment Service (Port 3005)
           sudo docker run -d \
@@ -191,9 +196,9 @@ jobs:
             -p 3005:3005 \
             -e NODE_ENV=production \
             -e PAYMENT_PORT=3005 \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-            nebengjek/payment-service:latest
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e REDIS_URL='${{ secrets.REDIS_URL }}' \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/payment-service:latest
 
           # Tracking Service (Port 3006)
           sudo docker run -d \
@@ -203,9 +208,9 @@ jobs:
             -p 3006:3006 \
             -e NODE_ENV=production \
             -e TRACKING_PORT=3006 \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e REDIS_URL="${{ secrets.REDIS_URL }}" \
-            nebengjek/tracking-service:latest
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e REDIS_URL='${{ secrets.REDIS_URL }}' \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/tracking-service:latest
 
           echo "✅ All microservices deployed!"
 
