@@ -220,7 +220,9 @@ jobs:
             PrivateSubnet2=${{ needs.get-infrastructure.outputs.private-subnet-2 }} \
             ECSClusterName=${{ needs.get-infrastructure.outputs.ecs-cluster }} \
             ECRRepository=${{ matrix.service.name }} \
-            ImageTag=${{ github.sha }}"
+            ImageTag=${{ github.sha }} \
+            ExecutionRoleArn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/nebengjek-${{ env.ENVIRONMENT }}-${{ matrix.service.name }}-execution-role \
+            TaskRoleArn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/nebengjek-${{ env.ENVIRONMENT }}-${{ matrix.service.name }}-task-role"
 
           # Add database parameters for services that use database
           if [ "${{ matrix.service.uses_database }}" = "true" ]; then
@@ -254,68 +256,10 @@ jobs:
 
           echo "✅ ${{ matrix.service.name }} deployed successfully!"
 
-  deploy-kong:
-    name: 'Deploy Kong Gateway'
-    runs-on: ubuntu-latest
-    needs: [get-infrastructure, build-and-push]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy Kong Gateway
-        run: |
-          echo "🚀 Deploying Kong Gateway to ${{ env.ENVIRONMENT }} environment..."
-
-          # Set database credentials based on environment
-          if [ "${{ env.ENVIRONMENT }}" = "prod" ]; then
-            DB_HOST="${{ secrets.PROD_RDS_HOST }}"
-            DB_PORT="${{ secrets.PROD_RDS_PORT }}"
-            DB_USER="${{ secrets.PROD_RDS_USER }}"
-            DB_PASSWORD="${{ secrets.PROD_RDS_PASSWORD }}"
-            DB_NAME="${{ secrets.PROD_RDS_DATABASE }}"
-          else
-            DB_HOST="${{ secrets.DEV_RDS_HOST }}"
-            DB_PORT="${{ secrets.DEV_RDS_PORT }}"
-            DB_USER="${{ secrets.DEV_RDS_USER }}"
-            DB_PASSWORD="${{ secrets.DEV_RDS_PASSWORD }}"
-            DB_NAME="${{ secrets.DEV_RDS_DATABASE }}"
-          fi
-
-          aws cloudformation deploy \
-          --template-file deployment/cloudformation/kong.yaml \
-          --stack-name nebengjek-${{ env.ENVIRONMENT }}-kong \
-          --parameter-overrides \
-            Environment=${{ env.ENVIRONMENT }} \
-            VpcId=${{ needs.get-infrastructure.outputs.vpc-id }} \
-            PrivateSubnet1=${{ needs.get-infrastructure.outputs.private-subnet-1 }} \
-            PrivateSubnet2=${{ needs.get-infrastructure.outputs.private-subnet-2 }} \
-            PublicSubnet1=${{ needs.get-infrastructure.outputs.public-subnet-1 }} \
-            PublicSubnet2=${{ needs.get-infrastructure.outputs.public-subnet-2 }} \
-            ECSClusterName=${{ needs.get-infrastructure.outputs.ecs-cluster }} \
-            ExecutionRoleArn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/nebengjek-${{ env.ENVIRONMENT }}-kong-execution-role \
-            TaskRoleArn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/nebengjek-${{ env.ENVIRONMENT }}-kong-task-role \
-            DatabaseEndpoint="$DB_HOST" \
-            DatabasePort="$DB_PORT" \
-            DatabaseUsername="$DB_USER" \
-            DatabasePassword="$DB_PASSWORD" \
-            KongDatabaseName=kong \
-          --capabilities CAPABILITY_IAM \
-          --no-fail-on-empty-changeset
-
-          echo "✅ Kong Gateway deployed successfully!"
-
   verify-deployment:
     name: 'Verify Deployment'
     runs-on: ubuntu-latest
-    needs: [get-infrastructure, deploy-services, deploy-kong]
+    needs: [get-infrastructure, deploy-services]
 
     steps:
       - name: Checkout code
@@ -370,38 +314,6 @@ jobs:
               --output table
           else
             echo "⚠️ No tasks found in cluster"
-          fi
-
-      - name: Check Kong Gateway Status
-        run: |
-          echo "🧪 Checking Kong Gateway status..."
-
-          # Check if Kong is deployed
-          KONG_STATUS=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-kong \
-            --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "not-deployed")
-
-          if [ "$KONG_STATUS" = "CREATE_COMPLETE" ] || [ "$KONG_STATUS" = "UPDATE_COMPLETE" ]; then
-            echo "✅ Kong CloudFormation stack: $KONG_STATUS"
-            
-            # Try to get Kong ALB endpoint
-            KONG_ENDPOINT=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-kong \
-              --query 'Stacks[0].Outputs[?OutputKey==`KongProxyUrl`].OutputValue' --output text 2>/dev/null || echo "not-found")
-            
-            if [ "$KONG_ENDPOINT" != "not-found" ] && [ "$KONG_ENDPOINT" != "" ]; then
-              echo "🌐 Kong endpoint: $KONG_ENDPOINT"
-              
-              # Test Kong endpoint (with timeout)
-              echo "Testing Kong connectivity..."
-              if timeout 10 curl -f -s "$KONG_ENDPOINT" > /dev/null 2>&1; then
-                echo "✅ Kong Gateway is responding"
-              else
-                echo "⚠️ Kong Gateway not responding (may still be starting)"
-              fi
-            else
-              echo "📝 Kong endpoint not available yet"
-            fi
-          else
-            echo "📝 Kong deployment status: $KONG_STATUS"
           fi
 
       - name: Check CloudWatch Logs for Errors
@@ -467,20 +379,18 @@ jobs:
           echo "   📊 notification-service"  
           echo "   📊 payment-service"
           echo "   📊 matching-service"
-          echo "   📊 kong-gateway"
           echo ""
           echo "🔗 Next Steps:"
           echo "   1. ✅ Verify all services are healthy in ECS console"
-          echo "   2. 🔧 Configure Kong API routes for each service"
-          echo "   3. 🌐 Setup domain and SSL certificates"
-          echo "   4. 📊 Setup monitoring and alerting"
-          echo "   5. 🧪 Run end-to-end API tests"
-          echo "   6. 📱 Test mobile app integration"
+          echo "   2. 🌐 Setup domain and SSL certificates (if needed)"
+          echo "   3. 📊 Setup monitoring and alerting"
+          echo "   4. 🧪 Run end-to-end API tests"
+          echo "   5. 📱 Test mobile app integration"
           echo ""
           echo "🎉 Deployment completed successfully!"
           echo ""
           echo "⚠️ Notes:"
           echo "   - Database connectivity verified via service health"
           echo "   - Redis connectivity verified via service health"
-          echo "   - Kong may take additional time to be fully ready"
+          echo "   - All services deployed without API Gateway"
           echo "   - Check ECS console for detailed service status"

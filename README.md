@@ -20,6 +20,7 @@ NebengJek adalah sistem backend untuk layanan ojek online yang inovatif, menggab
 
 # 📂 Struktur Monorepo
 
+```bash
 📦nebengjek/
 ├── 📂apps/ # Microservices
 │ ├── 📂user-service/ # Autentikasi, manajemen pengguna & pengemudi
@@ -37,6 +38,7 @@ NebengJek adalah sistem backend untuk layanan ojek online yang inovatif, menggab
 │ └── 📂cloudformation/ # Template infrastruktur AWS
 ├── 📂prisma/ # Skema basis data & migrasi
 └── 📂docs/ # Dokumentasi & diagram
+```
 
 # 🔐 Password Hashing
 
