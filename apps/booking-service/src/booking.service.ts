@@ -22,8 +22,6 @@ export class BookingService {
   constructor(
     private readonly bookingRepository: BookingRepository,
     private readonly httpService: HttpService,
-    @Inject('NOTIFICATION_SERVICE') private notificationServiceClient: ClientProxy,
-    @Inject('MATCHING_SERVICE') private matchingServiceClient: ClientProxy,
     @Inject('TRACKING_SERVICE') private trackingServiceClient: ClientProxy,
     @Inject('REDIS_CLIENT') private redis: any,
     private readonly messagingService: MessagingService,
