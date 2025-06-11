@@ -5,32 +5,27 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
+    AllowedValues: [dev, prod]
 
   VpcId:
     Type: String
     Description: VPC where the resources will be deployed
-    Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
     Description: First private subnet
-    Default: subnet-09a266d6f99328dd2 # Replace with actual subnet ID
 
   PrivateSubnet2:
     Type: String
     Description: Second private subnet
-    Default: subnet-078f811f523ef7581 # Replace with actual subnet ID
 
   PublicSubnet1:
     Type: String
     Description: First public subnet
-    Default: subnet-0ef68a035beb20b73 # Replace with actual subnet ID
 
   PublicSubnet2:
     Type: String
     Description: Second public subnet
-    Default: subnet-07373bedcd3b3c802 # Replace with actual subnet ID
 
   ECSClusterName:
     Type: String
@@ -40,18 +35,15 @@ Parameters:
   ExecutionRoleArn:
     Type: String
     Description: ARN of pre-created ECS execution role
-    Default: arn:aws:iam::699475956139:role/nebengjek-dev-kong-execution-role
 
   TaskRoleArn:
     Type: String
     Description: ARN of pre-created ECS task role
-    Default: arn:aws:iam::699475956139:role/nebengjek-dev-kong-task-role
 
   # External Database Parameters
   DatabaseEndpoint:
     Type: String
-    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
-    Description: RDS PostgreSQL endpoint
+    Description: RDS PostgreSQL endpoint from external infrastructure
 
   DatabasePort:
     Type: String
@@ -60,7 +52,6 @@ Parameters:
 
   DatabaseUsername:
     Type: String
-    Default: nebengjek
     Description: Database username
 
   DatabasePassword:
@@ -72,6 +63,11 @@ Parameters:
     Type: String
     Default: kong
     Description: Kong database name (separate from main app database)
+
+  KongImageTag:
+    Type: String
+    Description: Kong image tag
+    Default: '3.4'
 
 Resources:
   # Security Group for Kong Gateway
@@ -184,7 +180,7 @@ Resources:
       TaskRoleArn: !Ref TaskRoleArn # ← Using pre-created role
       ContainerDefinitions:
         - Name: kong
-          Image: kong:3.4
+          Image: !Sub 'kong:${KongImageTag}'
           Essential: true
           LogConfiguration:
             LogDriver: awslogs

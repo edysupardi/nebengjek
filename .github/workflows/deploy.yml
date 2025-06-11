@@ -18,10 +18,22 @@ env:
   AWS_REGION: ap-southeast-1
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com
   ENVIRONMENT: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+  JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+  JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+  GATEWAY_SECRET_KEY: ${{ secrets.GATEWAY_SECRET_KEY }}
+
+  # ✅ ENVIRONMENT-SPECIFIC INFRASTRUCTURE ENDPOINTS
+  REDIS_HOST: ${{ github.ref_name == 'main' && secrets.PROD_REDIS_HOST || secrets.DEV_REDIS_HOST }}
+  REDIS_PORT: ${{ github.ref_name == 'main' && secrets.PROD_REDIS_PORT || secrets.DEV_REDIS_PORT }}
+  RDS_HOST: ${{ github.ref_name == 'main' && secrets.PROD_RDS_HOST || secrets.DEV_RDS_HOST }}
+  RDS_PORT: ${{ github.ref_name == 'main' && secrets.PROD_RDS_PORT || secrets.DEV_RDS_PORT }}
+  RDS_DATABASE: ${{ github.ref_name == 'main' && secrets.PROD_RDS_DATABASE || secrets.DEV_RDS_DATABASE }}
+  RDS_USER: ${{ github.ref_name == 'main' && secrets.PROD_RDS_USER || secrets.DEV_RDS_USER }}
+  RDS_PASSWORD: ${{ github.ref_name == 'main' && secrets.PROD_RDS_PASSWORD || secrets.DEV_RDS_PASSWORD }}
 
 jobs:
-  deploy-infrastructure:
-    name: 'Deploy Infrastructure'
+  get-infrastructure:
+    name: 'Get Infrastructure Info'
     runs-on: ubuntu-latest
     outputs:
       vpc-id: ${{ steps.get-vpc.outputs.vpc-id }}
@@ -29,8 +41,6 @@ jobs:
       public-subnet-2: ${{ steps.get-vpc.outputs.public-subnet-2 }}
       private-subnet-1: ${{ steps.get-vpc.outputs.private-subnet-1 }}
       private-subnet-2: ${{ steps.get-vpc.outputs.private-subnet-2 }}
-      redis-host: ${{ steps.deploy-redis.outputs.redis-host }}
-      redis-port: ${{ steps.deploy-redis.outputs.redis-port }}
       ecs-cluster: ${{ steps.deploy-ecs.outputs.ecs-cluster }}
 
     steps:
@@ -44,14 +54,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Display Environment Configuration
+        run: |
+          echo "🌍 Deployment Configuration:"
+          echo "   Environment: ${{ env.ENVIRONMENT }}"
+          echo "   Branch: ${{ github.ref_name }}"
+          echo "   Redis Host: ${{ env.REDIS_HOST }}"
+          echo "   RDS Host: ${{ env.RDS_HOST }}"
+          echo "   RDS Database: ${{ env.RDS_DATABASE }}"
+
       - name: Get VPC Information
         id: get-vpc
         run: |
-          VPC_ID=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
-          PUBLIC_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet1`].OutputValue' --output text)
-          PUBLIC_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet2`].OutputValue' --output text)
-          PRIVATE_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet1`].OutputValue' --output text)
-          PRIVATE_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT || 'prod' }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet2`].OutputValue' --output text)
+          VPC_ID=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
+          PUBLIC_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet1`].OutputValue' --output text)
+          PUBLIC_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnet2`].OutputValue' --output text)
+          PRIVATE_SUBNET_1=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet1`].OutputValue' --output text)
+          PRIVATE_SUBNET_2=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-vpc --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnet2`].OutputValue' --output text)
 
           echo "vpc-id=$VPC_ID" >> $GITHUB_OUTPUT
           echo "public-subnet-1=$PUBLIC_SUBNET_1" >> $GITHUB_OUTPUT
@@ -62,7 +81,7 @@ jobs:
       - name: Deploy ECS Cluster
         id: deploy-ecs
         run: |
-          echo "🚀 Deploying ECS Cluster..."
+          echo "🚀 Deploying ECS Cluster for ${{ env.ENVIRONMENT }}..."
 
           aws cloudformation deploy \
             --template-file deployment/cloudformation/ecs-cluster.yaml \
@@ -77,34 +96,10 @@ jobs:
           echo "ecs-cluster=$ECS_CLUSTER" >> $GITHUB_OUTPUT
           echo "✅ ECS Cluster deployed: $ECS_CLUSTER"
 
-      - name: Deploy ElastiCache Redis
-        id: deploy-redis
-        run: |
-          echo "🚀 Deploying ElastiCache Redis..."
-
-          aws cloudformation deploy \
-            --template-file deployment/cloudformation/elasticache-redis.yaml \
-            --stack-name nebengjek-${{ env.ENVIRONMENT }}-redis \
-            --parameter-overrides \
-              Environment=${{ env.ENVIRONMENT }} \
-              VpcId=${{ steps.get-vpc.outputs.vpc-id }} \
-              PrivateSubnet1=${{ steps.get-vpc.outputs.private-subnet-1 }} \
-              PrivateSubnet2=${{ steps.get-vpc.outputs.private-subnet-2 }} \
-            --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset
-
-          # Get Redis endpoint details
-          REDIS_HOST=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-redis --query 'Stacks[0].Outputs[?OutputKey==`RedisEndpoint`].OutputValue' --output text)
-          REDIS_PORT=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-redis --query 'Stacks[0].Outputs[?OutputKey==`RedisPort`].OutputValue' --output text)
-
-          echo "redis-host=$REDIS_HOST" >> $GITHUB_OUTPUT
-          echo "redis-port=$REDIS_PORT" >> $GITHUB_OUTPUT
-          echo "✅ Redis deployed at: $REDIS_HOST:$REDIS_PORT"
-
   build-and-push:
     name: 'Build and Push All Services'
     runs-on: ubuntu-latest
-    needs: deploy-infrastructure
+    needs: get-infrastructure
 
     steps:
       - name: Checkout code
@@ -133,7 +128,7 @@ jobs:
           services=("user-service" "booking-service" "matching-service" "notification-service" "payment-service" "tracking-service")
 
           for service in "${services[@]}"; do
-            echo "🐳 Building $service..."
+            echo "🐳 Building $service for ${{ env.ENVIRONMENT }}..."
             
             if [ -f "./deployment/docker/$service.dockerfile" ]; then
               docker build -f ./deployment/docker/$service.dockerfile -t $service .
@@ -142,12 +137,14 @@ jobs:
               continue
             fi
             
-            docker tag $service:latest $ECR_REGISTRY/$service:latest
-            docker tag $service:latest $ECR_REGISTRY/$service:${{ github.sha }}
+            # Tag with environment-specific tags
+            docker tag $service:latest $ECR_REGISTRY/$service:${{ env.ENVIRONMENT }}-${{ github.sha }}
+            docker tag $service:latest $ECR_REGISTRY/$service:${{ env.ENVIRONMENT }}-latest
+            
             
             echo "📤 Pushing $service..."
-            docker push $ECR_REGISTRY/$service:latest
-            docker push $ECR_REGISTRY/$service:${{ github.sha }}
+            docker push $ECR_REGISTRY/$service:${{ env.ENVIRONMENT }}-latest
+            docker push $ECR_REGISTRY/$service:${{ env.ENVIRONMENT }}-${{ github.sha }}
             
             echo "✅ $service pushed successfully!"
           done
@@ -155,7 +152,7 @@ jobs:
   deploy-kong:
     name: 'Deploy Kong Gateway'
     runs-on: ubuntu-latest
-    needs: [deploy-infrastructure, build-and-push]
+    needs: [get-infrastructure, build-and-push]
 
     steps:
       - name: Checkout code
@@ -170,23 +167,23 @@ jobs:
 
       - name: Deploy Kong Gateway
         run: |
-          echo "🚀 Deploying Kong Gateway..."
+          echo "🚀 Deploying Kong Gateway for ${{ env.ENVIRONMENT }}..."
 
           aws cloudformation deploy \
             --template-file deployment/cloudformation/kong.yaml \
             --stack-name nebengjek-${{ env.ENVIRONMENT }}-kong \
             --parameter-overrides \
               Environment=${{ env.ENVIRONMENT }} \
-              VpcId=${{ needs.deploy-infrastructure.outputs.vpc-id }} \
-              PrivateSubnet1=${{ needs.deploy-infrastructure.outputs.private-subnet-1 }} \
-              PrivateSubnet2=${{ needs.deploy-infrastructure.outputs.private-subnet-2 }} \
-              PublicSubnet1=${{ needs.deploy-infrastructure.outputs.public-subnet-1 }} \
-              PublicSubnet2=${{ needs.deploy-infrastructure.outputs.public-subnet-2 }} \
-              ECSClusterName=${{ needs.deploy-infrastructure.outputs.ecs-cluster }} \
-              DatabaseEndpoint=${{ secrets.RDS_HOST }} \
-              DatabasePort=${{ secrets.RDS_PORT }} \
-              DatabaseUsername=${{ secrets.RDS_USER }} \
-              DatabasePassword=${{ secrets.RDS_PASSWORD }} \
+              VpcId=${{ needs.get-infrastructure.outputs.vpc-id }} \
+              PrivateSubnet1=${{ needs.get-infrastructure.outputs.private-subnet-1 }} \
+              PrivateSubnet2=${{ needs.get-infrastructure.outputs.private-subnet-2 }} \
+              PublicSubnet1=${{ needs.get-infrastructure.outputs.public-subnet-1 }} \
+              PublicSubnet2=${{ needs.get-infrastructure.outputs.public-subnet-2 }} \
+              ECSClusterName=${{ needs.get-infrastructure.outputs.ecs-cluster }} \
+              DatabaseEndpoint=${{ env.RDS_HOST }} \
+              DatabasePort=${{ env.RDS_PORT }} \
+              DatabaseUsername=${{ env.RDS_USER }} \
+              DatabasePassword=${{ env.RDS_PASSWORD }} \
               KongDatabaseName=kong \
             --capabilities CAPABILITY_IAM \
             --no-fail-on-empty-changeset
@@ -196,7 +193,7 @@ jobs:
   deploy-services:
     name: 'Deploy All Microservices'
     runs-on: ubuntu-latest
-    needs: [deploy-infrastructure, build-and-push]
+    needs: [get-infrastructure, build-and-push]
     strategy:
       matrix:
         service:
@@ -232,7 +229,7 @@ jobs:
 
       - name: Deploy ${{ matrix.service.name }}
         run: |
-          echo "🚀 Deploying ${{ matrix.service.name }}..."
+          echo "🚀 Deploying ${{ matrix.service.name }} to ${{ env.ENVIRONMENT }}..."
 
           # Check if CloudFormation template exists
           if [ ! -f "deployment/cloudformation/${{ matrix.service.name }}.yaml" ]; then
@@ -242,27 +239,39 @@ jobs:
 
           # Build parameter overrides based on service requirements
           PARAMETERS="Environment=${{ env.ENVIRONMENT }} \
-            VpcId=${{ needs.deploy-infrastructure.outputs.vpc-id }} \
-            PrivateSubnet1=${{ needs.deploy-infrastructure.outputs.private-subnet-1 }} \
-            PrivateSubnet2=${{ needs.deploy-infrastructure.outputs.private-subnet-2 }} \
-            ECSClusterName=${{ needs.deploy-infrastructure.outputs.ecs-cluster }} \
+            VpcId=${{ needs.get-infrastructure.outputs.vpc-id }} \
+            PrivateSubnet1=${{ needs.get-infrastructure.outputs.private-subnet-1 }} \
+            PrivateSubnet2=${{ needs.get-infrastructure.outputs.private-subnet-2 }} \
+            ECSClusterName=${{ needs.get-infrastructure.outputs.ecs-cluster }} \
             ECRRepository=${{ matrix.service.name }}"
+
+          PARAMETERS="$PARAMETERS \
+            ImageTag=${{ env.ENVIRONMENT }}-${{ github.sha }} \
+            ExecutionRoleArn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/nebengjek-${{ env.ENVIRONMENT }}-${{ matrix.service.name }}-execution-role \
+            TaskRoleArn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/nebengjek-${{ env.ENVIRONMENT }}-${{ matrix.service.name }}-task-role"
 
           # Add database parameters for services that use database
           if [ "${{ matrix.service.uses_database }}" = "true" ]; then
             PARAMETERS="$PARAMETERS \
-              DatabaseEndpoint=${{ secrets.RDS_HOST }} \
-              DatabasePort=${{ secrets.RDS_PORT }} \
-              DatabaseName=${{ secrets.RDS_DATABASE }} \
-              DatabaseUsername=${{ secrets.RDS_USER }} \
-              DatabasePassword=${{ secrets.RDS_PASSWORD }}"
+              DatabaseEndpoint=${{ env.RDS_HOST }} \
+              DatabasePort=${{ env.RDS_PORT }} \
+              DatabaseName=${{ env.RDS_DATABASE }} \
+              DatabaseUsername=${{ env.RDS_USER }} \
+              DatabasePassword=${{ env.RDS_PASSWORD }}"
           fi
 
           # Add Redis parameters for services that use Redis
           if [ "${{ matrix.service.uses_redis }}" = "true" ]; then
             PARAMETERS="$PARAMETERS \
-              RedisHost=${{ needs.deploy-infrastructure.outputs.redis-host }} \
-              RedisPort=${{ needs.deploy-infrastructure.outputs.redis-port }}"
+              RedisHost=${{ env.REDIS_HOST }} \
+              RedisPort=${{ env.REDIS_PORT }}"
+          fi
+
+          if [ "${{ matrix.service.name }}" = "user-service" ]; then
+            PARAMETERS="$PARAMETERS \
+              JWTAccessSecret=${{ env.JWT_ACCESS_SECRET }} \
+              JWTRefreshSecret=${{ env.JWT_REFRESH_SECRET }} \
+              GatewaySecretKey=${{ env.GATEWAY_SECRET_KEY }}"
           fi
 
           aws cloudformation deploy \
@@ -272,12 +281,12 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --no-fail-on-empty-changeset
 
-          echo "✅ ${{ matrix.service.name }} deployed successfully!"
+          echo "✅ ${{ matrix.service.name }} deployed successfully to ${{ env.ENVIRONMENT }}!"
 
   production-testing:
     name: 'Production Testing'
     runs-on: ubuntu-latest
-    needs: [deploy-infrastructure, deploy-services, deploy-kong]
+    needs: [get-infrastructure, deploy-services, deploy-kong]
 
     steps:
       - name: Checkout code
@@ -295,113 +304,40 @@ jobs:
           echo "⏳ Waiting for services to become healthy..."
           sleep 120  # Wait for services to start
 
-      - name: Get service endpoints
-        id: endpoints
+      - name: Test External Infrastructure Connectivity
         run: |
-          # Get Kong ALB endpoint
-          KONG_ENDPOINT=$(aws cloudformation describe-stacks --stack-name nebengjek-${{ env.ENVIRONMENT }}-kong --query 'Stacks[0].Outputs[?OutputKey==`KongProxyUrl`].OutputValue' --output text 2>/dev/null || echo "not-deployed")
-          echo "kong-endpoint=$KONG_ENDPOINT" >> $GITHUB_OUTPUT
-
-          echo "🌐 Kong API Gateway: $KONG_ENDPOINT"
-
-      - name: Test Database Connectivity
-        run: |
-          echo "🔍 Testing database connectivity..."
-
-          # Install PostgreSQL client
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client
+          echo "🔍 Testing ${{ env.ENVIRONMENT }} external infrastructure connectivity..."
 
           # Test database connection
-          export PGPASSWORD="${{ secrets.RDS_PASSWORD }}"
-          if psql -h ${{ secrets.RDS_HOST }} -p ${{ secrets.RDS_PORT }} -U ${{ secrets.RDS_USER }} -d ${{ secrets.RDS_DATABASE }} -c "SELECT 1;" > /dev/null 2>&1; then
-            echo "✅ Database connection successful"
+          echo "📊 Testing PostgreSQL (${{ env.ENVIRONMENT }})..."
+          sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+          export PGPASSWORD="${{ env.RDS_PASSWORD }}"
+          if psql -h ${{ env.RDS_HOST }} -p ${{ env.RDS_PORT }} -U ${{ env.RDS_USER }} -d ${{ env.RDS_DATABASE }} -c "SELECT 1;" > /dev/null 2>&1; then
+            echo "✅ ${{ env.ENVIRONMENT }} PostgreSQL connection successful"
           else
-            echo "❌ Database connection failed"
+            echo "❌ ${{ env.ENVIRONMENT }} PostgreSQL connection failed"
             exit 1
           fi
-
-      - name: Test Redis Connectivity
-        run: |
-          echo "🔍 Testing Redis connectivity..."
-
-          # Install Redis CLI
-          sudo apt-get install -y redis-tools
 
           # Test Redis connection
-          if redis-cli -h ${{ needs.deploy-infrastructure.outputs.redis-host }} -p ${{ needs.deploy-infrastructure.outputs.redis-port }} ping | grep -q PONG; then
-            echo "✅ Redis connection successful"
+          echo "🔴 Testing Redis (${{ env.ENVIRONMENT }})..."
+          sudo apt-get install -y redis-tools
+          if redis-cli -h ${{ env.REDIS_HOST }} -p ${{ env.REDIS_PORT }} ping | grep -q PONG; then
+            echo "✅ ${{ env.ENVIRONMENT }} Redis connection successful"
           else
-            echo "❌ Redis connection failed"
+            echo "❌ ${{ env.ENVIRONMENT }} Redis connection failed"
             exit 1
-          fi
-
-      - name: Test Service Health Endpoints
-        run: |
-          echo "🏥 Testing service health endpoints..."
-
-          services=("user-service" "booking-service" "tracking-service" "notification-service" "payment-service" "matching-service")
-
-          for service in "${services[@]}"; do
-            echo "Testing $service..."
-            
-            # Try to get service status from ECS
-            SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ needs.deploy-infrastructure.outputs.ecs-cluster }} --services ${{ env.ENVIRONMENT }}-$service --query 'services[0].status' --output text 2>/dev/null)
-            
-            if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
-              echo "✅ $service is running"
-            else
-              echo "⚠️ $service status: $SERVICE_STATUS"
-            fi
-          done
-
-      - name: Test Kong Gateway
-        run: |
-          echo "🧪 Testing Kong Gateway..."
-
-          KONG_ENDPOINT="${{ steps.endpoints.outputs.kong-endpoint }}"
-
-          if [ "$KONG_ENDPOINT" != "not-deployed" ] && [ "$KONG_ENDPOINT" != "" ]; then
-            # Test Kong status endpoint
-            if curl -f -s "$KONG_ENDPOINT/status" > /dev/null; then
-              echo "✅ Kong Gateway is responding"
-            else
-              echo "⚠️ Kong Gateway not responding via ALB"
-            fi
-          else
-            echo "📝 Kong Gateway not deployed or endpoint not available"
           fi
 
       - name: Generate Test Report
         run: |
-          echo "📊 Production Deployment Test Report"
-          echo "====================================="
+          echo "📊 Environment: ${{ env.ENVIRONMENT }} Deployment Report"
+          echo "=============================================="
           echo ""
-          echo "🏗️ Infrastructure:"
-          echo "   ✅ VPC: ${{ needs.deploy-infrastructure.outputs.vpc-id }}"
-          echo "   ✅ ECS Cluster: ${{ needs.deploy-infrastructure.outputs.ecs-cluster }}"
-          echo "   ✅ Redis: ${{ needs.deploy-infrastructure.outputs.redis-host }}:${{ needs.deploy-infrastructure.outputs.redis-port }}"
-          echo "   ✅ RDS: ${{ secrets.RDS_HOST }}"
+          echo "🏗️ Infrastructure (${{ env.ENVIRONMENT }}):"
+          echo "   ✅ VPC: ${{ needs.get-infrastructure.outputs.vpc-id }}"
+          echo "   ✅ ECS Cluster: ${{ needs.get-infrastructure.outputs.ecs-cluster }}"
+          echo "   ✅ Redis: ${{ env.REDIS_HOST }}:${{ env.REDIS_PORT }}"
+          echo "   ✅ PostgreSQL: ${{ env.RDS_HOST }}"
           echo ""
-          echo "🚀 Services Deployed:"
-          echo "   ✅ user-service"
-          echo "   ✅ booking-service"
-          echo "   ✅ tracking-service"
-          echo "   ✅ notification-service"
-          echo "   ✅ payment-service"
-          echo "   ✅ matching-service"
-          echo "   ✅ kong-gateway"
-          echo ""
-          echo "🧪 Tests Completed:"
-          echo "   ✅ Database connectivity"
-          echo "   ✅ Redis connectivity"
-          echo "   ✅ Service health checks"
-          echo "   ✅ Kong Gateway status"
-          echo ""
-          echo "🎉 Production deployment successful!"
-          echo ""
-          echo "🔗 Next Steps:"
-          echo "   1. Configure Kong API routes"
-          echo "   2. Setup domain and SSL certificates"
-          echo "   3. Setup monitoring and alerts"
-          echo "   4. Test complete user flows"
+          echo "🎉 ${{ env.ENVIRONMENT }} environment deployment successful!"

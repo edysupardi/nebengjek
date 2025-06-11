@@ -5,22 +5,19 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
+    AllowedValues: [dev, prod]
 
   VpcId:
     Type: String
     Description: VPC where the resources will be deployed
-    Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
     Description: First private subnet
-    Default: subnet-09a266d6f99328dd2
 
   PrivateSubnet2:
     Type: String
     Description: Second private subnet
-    Default: subnet-078f811f523ef7581
 
   ECSClusterName:
     Type: String
@@ -34,22 +31,24 @@ Parameters:
   ExecutionRoleArn:
     Type: String
     Description: ARN of pre-created ECS execution role
-    Default: arn:aws:iam::699475956139:role/nebengjek-dev-matching-execution-role
 
   TaskRoleArn:
     Type: String
     Description: ARN of pre-created ECS task role
-    Default: arn:aws:iam::699475956139:role/nebengjek-dev-matching-task-role
 
   RedisHost:
     Type: String
-    Description: Redis host (from ElastiCache)
-    Default: 'redis.nebengjek.local'
+    Description: Redis host from external infrastructure
 
   RedisPort:
     Type: String
     Default: '6379'
     Description: Redis port
+
+  ImageTag:
+    Type: String
+    Description: Docker image tag
+    Default: latest
 
 Resources:
   MatchingServiceSecurityGroup:
@@ -123,7 +122,7 @@ Resources:
       TaskRoleArn: !Ref TaskRoleArn
       ContainerDefinitions:
         - Name: matching-service
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:${ImageTag}'
           Essential: true
           LogConfiguration:
             LogDriver: awslogs

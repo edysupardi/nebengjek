@@ -5,22 +5,19 @@ Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
+    AllowedValues: [dev, prod]
 
   VpcId:
     Type: String
     Description: VPC where the resources will be deployed
-    Default: vpc-021b849d6600dd8b7
 
   PrivateSubnet1:
     Type: String
     Description: First private subnet
-    Default: subnet-09a266d6f99328dd2
 
   PrivateSubnet2:
     Type: String
     Description: Second private subnet
-    Default: subnet-078f811f523ef7581
 
   ECSClusterName:
     Type: String
@@ -34,17 +31,14 @@ Parameters:
   ExecutionRoleArn:
     Type: String
     Description: ARN of pre-created ECS execution role
-    Default: arn:aws:iam::699475956139:role/nebengjek-dev-tracking-execution-role
 
   TaskRoleArn:
     Type: String
     Description: ARN of pre-created ECS task role
-    Default: arn:aws:iam::699475956139:role/nebengjek-dev-tracking-task-role
 
   DatabaseEndpoint:
     Type: String
-    Default: nebengjek-prod-postgres.cbw0ge6eg2a8.ap-southeast-1.rds.amazonaws.com
-    Description: RDS PostgreSQL endpoint
+    Description: RDS PostgreSQL endpoint from external infrastructure
 
   DatabasePort:
     Type: String
@@ -53,12 +47,10 @@ Parameters:
 
   DatabaseName:
     Type: String
-    Default: nebengjek_prod
     Description: Database name
 
   DatabaseUsername:
     Type: String
-    Default: nebengjek
     Description: Database username
 
   DatabasePassword:
@@ -68,13 +60,17 @@ Parameters:
 
   RedisHost:
     Type: String
-    Default: 'redis.nebengjek.local'
-    Description: Redis host
+    Description: Redis host from external infrastructure
 
   RedisPort:
     Type: String
     Default: '6379'
     Description: Redis port
+
+  ImageTag:
+    Type: String
+    Description: Docker image tag
+    Default: latest
 
 Resources:
   TrackingServiceSecurityGroup:
@@ -148,7 +144,7 @@ Resources:
       TaskRoleArn: !Ref TaskRoleArn
       ContainerDefinitions:
         - Name: tracking-service
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:${ImageTag}'
           Essential: true
           LogConfiguration:
             LogDriver: awslogs
