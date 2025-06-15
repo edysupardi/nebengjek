@@ -3,13 +3,7 @@ import { BookingRepository } from '@app/booking/repositories/booking.repository'
 import { BookingStatus } from '@app/common/enums/booking-status.enum';
 import { PrismaService } from '@app/database';
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BookingFactory,
-  createMockDriverProfile,
-  createMockPrismaBooking,
-  mockCustomer,
-  mockDriver,
-} from '../../../mocks';
+import { BookingFactory, createMockDriverProfile, mockCustomer, mockDriver } from '../../../mocks';
 
 describe('BookingRepository', () => {
   let repository: BookingRepository;
@@ -26,7 +20,17 @@ describe('BookingRepository', () => {
 
   beforeEach(async () => {
     const mockPrismaService = {
-      booking: createMockPrismaBooking(),
+      booking: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+        delete: jest.fn(),
+        count: jest.fn(),
+        groupBy: jest.fn(),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({

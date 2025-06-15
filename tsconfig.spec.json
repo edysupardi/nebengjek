@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["jest", "node"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": [
+    "apps/**/*.spec.ts",
+    "apps/**/*.test.ts",
+    "libs/**/*.spec.ts",
+    "libs/**/*.test.ts",
+    "apps/**/test/**/*",
+    "libs/**/test/**/*"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,9 +1,9 @@
 // libs/common/src/guards/trusted-gateway.guard.ts
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
-import { Observable } from 'rxjs';
 import * as crypto from 'crypto';
+import { Observable } from 'rxjs';
 
 @Injectable()
 export class TrustedGatewayGuard implements CanActivate {
